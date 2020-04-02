@@ -222,13 +222,11 @@ public class InstallationProxyClient: Service {
         public let details: String?
         public let code: Int
 
-        init?(node: PlistNode) {
+        init?(raw: plist_t) {
             var rawName: UnsafeMutablePointer<Int8>?
             var rawDetails: UnsafeMutablePointer<Int8>?
             var rawCode: UInt64 = 0
-            guard let type = Error(node.withRawNode({
-                instproxy_status_get_error($0, &rawName, &rawDetails, &rawCode)
-            })),
+            guard let type = Error(instproxy_status_get_error(raw, &rawName, &rawDetails, &rawCode)),
                 let name = rawName.map({ String(cString: $0) })
                 else { return nil }
 
@@ -248,45 +246,45 @@ public class InstallationProxyClient: Service {
         public let progress: Double?
     }
 
-    public class InstallOptions {
+    // open so that extra options may be added
+    open class Options: Encodable {
+        public var skipUninstall: Bool?
+        public var applicationSINF: Data?
+        public var itunesMetadata: Data?
+        public var returnAttributes: [String]?
+        public var additionalOptions: [String: String] = [:]
 
-        private var dictionary: [String: PlistNode] = [:]
-        public init() {}
-
-        public func node() -> PlistNode { .dictionary(dictionary) }
-
-        private func get<T>(_ key: String) -> T? {
-            dictionary[key]?.value as? T
-        }
-        private func set<T>(_ key: String, _ value: T?) {
-            dictionary[key] = value.flatMap(PlistNode.init)
-        }
-
-        public var skipUninstall: Bool? {
-            get { get("SkipUninstall") }
-            set { set("SkipUninstall", newValue) }
+        private enum CodingKeys: String, CodingKey {
+            case skipUninstall = "SkipUninstall"
+            case applicationSINF = "ApplicationSINF"
+            case itunesMetadata = "iTunesMetadata"
+            case returnAttributes = "ReturnAttributes"
         }
 
-        public var applicationSINF: Data? {
-            get { get("ApplicationSINF") }
-            set { set("ApplicationSINF", newValue) }
+        public func encode(to encoder: Encoder) throws {
+            var keyedContainer = encoder.container(keyedBy: CodingKeys.self)
+            try skipUninstall.map { try keyedContainer.encode($0, forKey: .skipUninstall) }
+            try applicationSINF.map { try keyedContainer.encode($0, forKey: .applicationSINF) }
+            try itunesMetadata.map { try keyedContainer.encode($0, forKey: .itunesMetadata) }
+            try returnAttributes.map { try keyedContainer.encode($0, forKey: .returnAttributes) }
+
+            var singleValueContainer = encoder.singleValueContainer()
+            try additionalOptions.encode(into: &singleValueContainer)
         }
 
-        public var itunesMetadata: Data? {
-            get { get("iTunesMetadata") }
-            set { set("iTunesMetadata", newValue) }
+        public init(
+            skipUninstall: Bool? = nil,
+            applicationSINF: Data? = nil,
+            itunesMetadata: Data? = nil,
+            returnAttributes: [String]? = nil,
+            additionalOptions: [String: String] = [:]
+        ) {
+            self.skipUninstall = skipUninstall
+            self.applicationSINF = applicationSINF
+            self.itunesMetadata = itunesMetadata
+            self.returnAttributes = returnAttributes
+            self.additionalOptions = additionalOptions
         }
-
-        public var returnAttributes: [String]? {
-            get { get("ReturnAttributes") }
-            set { set("ReturnAttributes", newValue) }
-        }
-
-        public subscript(_ key: String) -> String? {
-            get { get(key) }
-            set { set(key, newValue) }
-        }
-
     }
 
     private class InstallUserData {
@@ -309,9 +307,11 @@ public class InstallationProxyClient: Service {
     public required init(raw: instproxy_client_t) { self.raw = raw }
     deinit { instproxy_client_free(raw) }
 
+    private let encoder = PlistNodeEncoder()
+
     public func install(
         package: URL,
-        options: InstallOptions,
+        options: Options,
         progress: @escaping (InstallProgress) -> Void,
         completion: @escaping (Result<(), Swift.Error>) -> Void
     ) {
@@ -319,8 +319,8 @@ public class InstallationProxyClient: Service {
             .passRetained(InstallUserData(progress: progress, completion: completion))
             .toOpaque()
 
-        if let error = Error(package.withUnsafeFileSystemRepresentation { path in
-            options.node().withRawNode { rawOptions in
+        if let error = try? Error(package.withUnsafeFileSystemRepresentation { path in
+            try encoder.withEncoded(options) { rawOptions in
                 instproxy_install(raw, path, rawOptions, { _, rawStatus, rawUserData in
                     let unmanagedUserData = Unmanaged<InstallUserData>.fromOpaque(rawUserData!)
                     let userData = unmanagedUserData.takeUnretainedValue()
@@ -330,11 +330,7 @@ public class InstallationProxyClient: Service {
                         unmanagedUserData.release()
                     }
 
-                    guard let status = PlistNode(rawNode: rawStatus!) else {
-                        return complete(.failure(Error.unknown))
-                    }
-
-                    if let error = StatusError(node: status) {
+                    if let error = StatusError(raw: rawStatus!) {
                         return complete(.failure(error))
                     }
 

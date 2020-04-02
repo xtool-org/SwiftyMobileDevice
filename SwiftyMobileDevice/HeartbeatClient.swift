@@ -41,18 +41,21 @@ public class HeartbeatClient: Service {
     public required init(raw: heartbeat_client_t) { self.raw = raw }
     deinit { heartbeat_client_free(raw) }
 
-    public func send(_ plist: PlistNode) throws {
-        try Self.check(plist.withRawNode { heartbeat_send(raw, $0) })
+    private let encoder = PlistNodeEncoder()
+    private let decoder = PlistNodeDecoder()
+
+    public func send<T: Encodable>(_ value: T) throws {
+        try Self.check(encoder.withEncoded(value) { heartbeat_send(raw, $0) })
     }
 
-    public func receive(timeout: TimeInterval? = nil) throws -> PlistNode {
-        try PlistNode { buf in
+    public func receive<T: Decodable>(_ type: T.Type, timeout: TimeInterval? = nil) throws -> T {
+        try decoder.decode(type) { buf in
             try Self.check(
                 timeout.map {
                     heartbeat_receive_with_timeout(raw, &buf, .init($0 * 1000))
                 } ?? heartbeat_receive(raw, &buf)
             )
-        }.orThrow(Error.internal)
+        }
     }
 
 }

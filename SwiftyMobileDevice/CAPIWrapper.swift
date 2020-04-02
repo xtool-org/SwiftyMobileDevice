@@ -25,8 +25,8 @@ public protocol CAPIWrapper: class {
 
 extension CAPIWrapper {
 
-    static func check(_ fn: @autoclosure () -> Error.Raw) throws {
-        if let error = Error(fn()) { throw error }
+    static func check(_ error: Error.Raw) throws {
+        if let error = Error(error) { throw error }
     }
 
     static func getArrayWithCount(
@@ -56,10 +56,10 @@ extension CAPIWrapper {
         defer { freeFn(values) }
 
         return sequence(state: values) { (
-            info: inout UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>
+            currValue: inout UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>
         ) -> UnsafeMutablePointer<Int8>? in
-            defer { info += 1 }
-            return info.pointee
+            defer { currValue += 1 }
+            return currValue.pointee
         }.map { String(cString: $0) }
     }
 
@@ -87,9 +87,5 @@ extension CAPIWrapper {
 
         return Data(bytes: data, count: .init(received))
     }
-
-}
-
-struct CAPIHelpers {
 
 }

@@ -162,7 +162,7 @@ public class LockdownClient: CAPIWrapper {
             set { raw.pointee.port = newValue }
         }
 
-        public var sslEnabled: Bool {
+        public var isSSLEnabled: Bool {
             get { raw.pointee.ssl_enabled != 0 }
             set { raw.pointee.ssl_enabled = newValue ? 1 : 0 }
         }
@@ -180,6 +180,9 @@ public class LockdownClient: CAPIWrapper {
             self.raw = raw
         }
     }
+
+    private let encoder = PlistNodeEncoder()
+    private let decoder = PlistNodeDecoder()
 
     public let raw: lockdownd_client_t
     public init(raw: lockdownd_client_t) { self.raw = raw }
@@ -228,14 +231,15 @@ public class LockdownClient: CAPIWrapper {
         ) ?? []
     }
 
-    public func value(forDomain domain: String?, key: String?) throws -> PlistNode {
-        try PlistNode { try Self.check(lockdownd_get_value(raw, domain, key, &$0)) }
-            .orThrow(Error.internal)
+    public func value<T: Decodable>(ofType type: T.Type, forDomain domain: String?, key: String?) throws -> T {
+        try decoder.decode(type) {
+            try Self.check(lockdownd_get_value(raw, domain, key, &$0))
+        }
     }
 
-    public func setValue(_ value: PlistNode?, forDomain domain: String, key: String) throws {
+    public func setValue<T: Encodable>(_ value: T?, forDomain domain: String, key: String) throws {
         if let value = value {
-            try Self.check(value.withRawNode {
+            try Self.check(encoder.withEncoded(value) {
                 lockdownd_set_value(raw, domain, key, plist_copy($0))
             })
         } else {
@@ -252,36 +256,40 @@ public class LockdownClient: CAPIWrapper {
 
     public func startSession(
         withHostID hostID: String
-    ) throws -> (sessionID: SessionID, sslEnabled: Bool) {
+    ) throws -> (sessionID: SessionID, isSSLEnabled: Bool) {
         var rawSessionID: UnsafeMutablePointer<Int8>?
-        var sslEnabled: Int32 = 0
-        try Self.check(lockdownd_start_session(raw, hostID, &rawSessionID, &sslEnabled))
+        var isSSLEnabled: Int32 = 0
+        try Self.check(lockdownd_start_session(raw, hostID, &rawSessionID, &isSSLEnabled))
         guard let sessionID = rawSessionID else { throw Error.internal }
-        return (.init(rawValue: .init(cString: sessionID)), sslEnabled != 0)
+        return (.init(rawValue: .init(cString: sessionID)), isSSLEnabled != 0)
     }
 
     public func stopSession(_ sessionID: SessionID) throws {
         try Self.check(lockdownd_stop_session(raw, sessionID.rawValue))
     }
 
-    public func send(_ plist: PlistNode) throws {
-        try Self.check(plist.withRawNode { lockdownd_send(raw, $0) })
+    public func send<T: Encodable>(_ value: T) throws {
+        try Self.check(encoder.withEncoded(value) {
+            lockdownd_send(raw, $0)
+        })
     }
 
-    public func receive() throws -> PlistNode {
-        try PlistNode({ try Self.check(lockdownd_receive(raw, &$0)) })
-            .orThrow(Error.internal)
+    public func receive<T: Decodable>(_ type: T.Type) throws -> T {
+        try decoder.decode(type) {
+            try Self.check(lockdownd_receive(raw, &$0))
+        }
     }
 
-    public func pair(
+    public func pair<D: Decodable>(
         withRecord record: PairRecord?,
-        options: [String: PlistNode] = ["ExtendedPairingErrors": .boolean(true)]
-    ) throws -> PlistNode {
-        try PlistNode { buf in
-            try Self.check(PlistNode.dictionary(options).withRawNode {
+        returnType: D.Type,
+        options: [String: Encodable] = ["ExtendedPairingErrors": true]
+    ) throws -> D {
+        try decoder.decode(returnType) { buf in
+            try Self.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) {
                 lockdownd_pair_with_options(raw, record?.raw, $0, &buf)
             })
-        }.orThrow(Error.internal)
+        }
     }
 
     public func validate(record: PairRecord) throws {
@@ -292,8 +300,8 @@ public class LockdownClient: CAPIWrapper {
         try Self.check(lockdownd_unpair(raw, record.raw))
     }
 
-    public func activate(withActivationRecord record: PlistNode) throws {
-        try Self.check(record.withRawNode {
+    public func activate(withActivationRecord record: [String: Encodable]) throws {
+        try Self.check(encoder.withEncoded(record.mapValues(AnyEncodable.init)) {
             lockdownd_activate(raw, $0)
         })
     }
