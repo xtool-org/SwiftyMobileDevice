@@ -75,9 +75,3 @@ class PlistNodeDecoder {
         return try decode(type, from: node)
     }
 }
-
-//#if canImport(Combine)
-//import Combine
-//extension PlistNodeEncoder: TopLevelEncoder {}
-//extension PlistNodeDecoder: TopLevelDecoder {}
-//#endif
