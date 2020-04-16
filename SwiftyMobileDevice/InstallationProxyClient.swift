@@ -267,9 +267,7 @@ public class InstallationProxyClient: Service {
             try applicationSINF.map { try keyedContainer.encode($0, forKey: .applicationSINF) }
             try itunesMetadata.map { try keyedContainer.encode($0, forKey: .itunesMetadata) }
             try returnAttributes.map { try keyedContainer.encode($0, forKey: .returnAttributes) }
-
-            var singleValueContainer = encoder.singleValueContainer()
-            try additionalOptions.encode(into: &singleValueContainer)
+            try additionalOptions.encode(to: encoder)
         }
 
         public init(

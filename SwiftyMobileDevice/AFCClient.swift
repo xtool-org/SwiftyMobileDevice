@@ -201,18 +201,18 @@ public class AFCClient: Service {
             return .init(written)
         }
 
-        public func seek(offset: Int, from whence: Whence) throws {
+        public func seek(to offset: UInt64, from whence: Whence) throws {
             try AFCClient.check(afc_file_seek(client.raw, handle, .init(offset), whence.raw))
         }
 
-        public func tell() throws -> Int {
+        public func tell() throws -> UInt64 {
             var position: UInt64 = 0
             try AFCClient.check(afc_file_tell(client.raw, handle, &position))
-            return .init(position)
+            return position
         }
 
-        public func truncate(to newSize: Int) throws {
-            try AFCClient.check(afc_file_truncate(client.raw, handle, .init(newSize)))
+        public func truncate(to newSize: UInt64) throws {
+            try AFCClient.check(afc_file_truncate(client.raw, handle, newSize))
         }
     }
 
