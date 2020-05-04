@@ -8,9 +8,9 @@
 
 import Foundation
 
-public class InstallationProxyClient: Service {
+public class InstallationProxyClient: LockdownService {
 
-    public enum Error: CAPIWrapperError {
+    public enum Error: CAPIError {
         case unknown
         case `internal`
         case invalidArg
@@ -298,6 +298,7 @@ public class InstallationProxyClient: Service {
         }
     }
 
+    public typealias Raw = instproxy_client_t
     public static let serviceIdentifier = INSTPROXY_SERVICE_NAME
     public static let newFunc: NewFunc = instproxy_client_new
     public static let startFunc: StartFunc = instproxy_client_start_service

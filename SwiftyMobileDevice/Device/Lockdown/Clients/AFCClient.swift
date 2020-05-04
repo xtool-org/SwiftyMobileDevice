@@ -8,9 +8,9 @@
 
 import Foundation
 
-public class AFCClient: Service {
+public class AFCClient: LockdownService {
 
-    public enum Error: CAPIWrapperError {
+    public enum Error: CAPIError {
         case unknown
         case `internal`
         case opHeaderInvalid
@@ -181,11 +181,11 @@ public class AFCClient: Service {
         deinit { afc_file_close(client.raw, handle) }
 
         public func lock(operation: LockOperation) throws {
-            try AFCClient.check(afc_file_lock(client.raw, handle, operation.raw))
+            try CAPI<Error>.check(afc_file_lock(client.raw, handle, operation.raw))
         }
 
         public func read(maxLength: Int) throws -> Data {
-            try AFCClient.getData(maxLength: maxLength) { data, received in
+            try CAPI<Error>.getData(maxLength: maxLength) { data, received in
                 afc_file_read(client.raw, handle, data, .init(maxLength), &received)
             }
         }
@@ -194,7 +194,7 @@ public class AFCClient: Service {
             var written: UInt32 = 0
             try data.withUnsafeBytes { bytes in
                 let bound = bytes.bindMemory(to: Int8.self)
-                try AFCClient.check(
+                try CAPI<Error>.check(
                     afc_file_write(client.raw, handle, bound.baseAddress, .init(bound.count), &written)
                 )
             }
@@ -202,20 +202,21 @@ public class AFCClient: Service {
         }
 
         public func seek(to offset: UInt64, from whence: Whence) throws {
-            try AFCClient.check(afc_file_seek(client.raw, handle, .init(offset), whence.raw))
+            try CAPI<Error>.check(afc_file_seek(client.raw, handle, .init(offset), whence.raw))
         }
 
         public func tell() throws -> UInt64 {
             var position: UInt64 = 0
-            try AFCClient.check(afc_file_tell(client.raw, handle, &position))
+            try CAPI<Error>.check(afc_file_tell(client.raw, handle, &position))
             return position
         }
 
         public func truncate(to newSize: UInt64) throws {
-            try AFCClient.check(afc_file_truncate(client.raw, handle, newSize))
+            try CAPI<Error>.check(afc_file_truncate(client.raw, handle, newSize))
         }
     }
 
+    public typealias Raw = afc_client_t
     public static let serviceIdentifier = AFC_SERVICE_NAME
     public static let newFunc: NewFunc = afc_client_new
     public static let startFunc: StartFunc = afc_client_start_service
@@ -224,7 +225,7 @@ public class AFCClient: Service {
     deinit { afc_client_free(raw) }
 
     public func deviceInfo() throws -> [String: String] {
-        try Self.getDictionary(
+        try CAPI<Error>.getDictionary(
             parseFn: { afc_get_device_info(raw, &$0) },
             freeFn: { afc_dictionary_free($0) }
         )
@@ -232,7 +233,7 @@ public class AFCClient: Service {
 
     public func contentsOfDirectory(at url: URL) throws -> [String] {
         try url.withUnsafeFileSystemRepresentation { path in
-            try Self.getNullTerminatedArray(
+            try CAPI<Error>.getNullTerminatedArray(
                 parseFn: { afc_read_directory(raw, path, &$0) },
                 freeFn: { afc_dictionary_free($0) }
             )
@@ -241,7 +242,7 @@ public class AFCClient: Service {
 
     public func fileInfo(for url: URL) throws -> [String: String] {
         try url.withUnsafeFileSystemRepresentation { path in
-            try Self.getDictionary(
+            try CAPI<Error>.getDictionary(
                 parseFn: { afc_get_file_info(raw, path, &$0) },
                 freeFn: { afc_dictionary_free($0) }
             )
@@ -262,7 +263,7 @@ public class AFCClient: Service {
     public func open(_ url: URL, mode: File.Mode) throws -> File {
         var handle: UInt64 = 0
         try url.withUnsafeFileSystemRepresentation { path in
-            try Self.check(afc_file_open(raw, path, mode.raw, &handle))
+            try CAPI<Error>.check(afc_file_open(raw, path, mode.raw, &handle))
         }
         guard let file = File(client: self, handle: handle)
             else { throw Error.internal }
@@ -271,34 +272,34 @@ public class AFCClient: Service {
 
     public func removeItem(at url: URL) throws {
         try url.withUnsafeFileSystemRepresentation {
-            try Self.check(afc_remove_path(raw, $0))
+            try CAPI<Error>.check(afc_remove_path(raw, $0))
         }
     }
 
     public func moveItem(at url: URL, to newURL: URL) throws {
         try url.withUnsafeFileSystemRepresentation { path in
             try newURL.withUnsafeFileSystemRepresentation { newPath in
-                try Self.check(afc_rename_path(raw, path, newPath))
+                try CAPI<Error>.check(afc_rename_path(raw, path, newPath))
             }
         }
     }
 
     public func createDirectory(at url: URL) throws {
         try url.withUnsafeFileSystemRepresentation { path in
-            try Self.check(afc_make_directory(raw, path))
+            try CAPI<Error>.check(afc_make_directory(raw, path))
         }
     }
 
     public func truncateFile(at url: URL, to newSize: Int) throws {
         try url.withUnsafeFileSystemRepresentation { path in
-            try Self.check(afc_truncate(raw, path, .init(newSize)))
+            try CAPI<Error>.check(afc_truncate(raw, path, .init(newSize)))
         }
     }
 
     public func linkItem(at url: URL, to newURL: URL, type: LinkType) throws {
         try url.withUnsafeFileSystemRepresentation { path in
             try newURL.withUnsafeFileSystemRepresentation { newPath in
-                try Self.check(afc_make_link(raw, type.raw, path, newPath))
+                try CAPI<Error>.check(afc_make_link(raw, type.raw, path, newPath))
             }
         }
     }
@@ -306,13 +307,13 @@ public class AFCClient: Service {
     public func setTime(at url: URL, to date: Date) throws {
         let ns = UInt64(date.timeIntervalSince1970 * 1_000_000_000)
         try url.withUnsafeFileSystemRepresentation { path in
-            try Self.check(afc_set_file_time(raw, path, ns))
+            try CAPI<Error>.check(afc_set_file_time(raw, path, ns))
         }
     }
 
     public func removeItemAndContents(at url: URL) throws {
         try url.withUnsafeFileSystemRepresentation { path in
-            try Self.check(afc_remove_path_and_contents(raw, path))
+            try CAPI<Error>.check(afc_remove_path_and_contents(raw, path))
         }
     }
 

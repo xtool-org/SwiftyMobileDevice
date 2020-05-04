@@ -10,8 +10,8 @@ import Foundation
 
 public enum USBMux {
 
-    public enum Error: LocalizedError {
-        case errno(Int)
+    public enum Error: LocalizedError, CAPIError {
+        case errno(Int32)
 
         public var errorDescription: String? {
             switch self {
@@ -19,6 +19,11 @@ public enum USBMux {
                 let str = strerror(.init(errnum))
                 return String(cString: str!)
             }
+        }
+
+        public init?(_ raw: Int32) {
+            guard raw != 0 else { return nil }
+            self = .errno(raw)
         }
     }
 
@@ -74,13 +79,9 @@ public enum USBMux {
         }
     }
 
-    static func check(_ result: Int32) throws {
-        guard result == 0 else { throw Error.errno(.init(result)) }
-    }
-
     public static func buid() throws -> String {
         var buidBytes: UnsafeMutablePointer<Int8>?
-        try check(usbmuxd_read_buid(&buidBytes))
+        try CAPI<Error>.check(usbmuxd_read_buid(&buidBytes))
         defer { free(buidBytes) }
         return String(cString: buidBytes!)
     }
@@ -88,7 +89,7 @@ public enum USBMux {
     public static func pairRecord(withID id: String) throws -> Data {
         var recordData: UnsafeMutablePointer<Int8>?
         var recordSize: UInt32 = 0
-        try check(usbmuxd_read_pair_record(id, &recordData, &recordSize))
+        try CAPI<Error>.check(usbmuxd_read_pair_record(id, &recordData, &recordSize))
         defer { free(recordData) }
         return Data(bytes: recordData!, count: Int(recordSize))
     }
@@ -96,14 +97,14 @@ public enum USBMux {
     public static func savePairRecord(_ record: Data, withID id: String, handle: Device.Handle? = nil) throws {
         try record.withUnsafeBytes { buf in
             let bound = buf.bindMemory(to: Int8.self)
-            try check(
+            try CAPI<Error>.check(
                 usbmuxd_save_pair_record_with_device_id(id, handle?.raw ?? 0, bound.baseAddress, .init(bound.count))
             )
         }
     }
 
     public static func deletePairRecord(withID id: String) throws {
-        try check(usbmuxd_delete_pair_record(id))
+        try CAPI<Error>.check(usbmuxd_delete_pair_record(id))
     }
 
     public static func setUseInotify(_ useInotify: Bool) {

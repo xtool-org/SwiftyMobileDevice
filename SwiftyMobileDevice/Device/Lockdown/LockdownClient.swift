@@ -8,9 +8,9 @@
 
 import Foundation
 
-public class LockdownClient: CAPIWrapper {
+public class LockdownClient {
 
-    public enum Error: CAPIWrapperError {
+    public enum Error: CAPIError {
         case unknown
         case `internal`
         case invalidArg
@@ -141,13 +141,13 @@ public class LockdownClient: CAPIWrapper {
         }
     }
 
-    public class ServiceDescriptor<T: Service> {
+    public class ServiceDescriptor<T: LockdownService> {
 
         public let raw: lockdownd_service_descriptor_t
         public init(raw: lockdownd_service_descriptor_t) { self.raw = raw }
         public init(client: LockdownClient, sendEscrowBag: Bool = false) throws {
             var descriptor: lockdownd_service_descriptor_t?
-            try LockdownClient.check(
+            try CAPI<Error>.check(
                 (sendEscrowBag ? lockdownd_start_service_with_escrow_bag : lockdownd_start_service)(
                     client.raw, T.serviceIdentifier, &descriptor
                 )
@@ -188,7 +188,7 @@ public class LockdownClient: CAPIWrapper {
     public init(raw: lockdownd_client_t) { self.raw = raw }
     public init(device: Device, label: String?, performHandshake: Bool) throws {
         var client: lockdownd_client_t?
-        try Self.check(
+        try CAPI<Error>.check(
             (performHandshake ? lockdownd_client_new_with_handshake : lockdownd_client_new)(
                 device.raw, &client, strdup(label)
             )
@@ -204,28 +204,28 @@ public class LockdownClient: CAPIWrapper {
 
     public func deviceUDID() throws -> String {
         var rawUDID: UnsafeMutablePointer<Int8>?
-        try Self.check(lockdownd_get_device_udid(raw, &rawUDID))
+        try CAPI<Error>.check(lockdownd_get_device_udid(raw, &rawUDID))
         guard let udid = rawUDID else { throw Error.internal }
         return String(cString: udid)
     }
 
     public func deviceName() throws -> String {
         var rawName: UnsafeMutablePointer<Int8>?
-        try Self.check(lockdownd_get_device_name(raw, &rawName))
+        try CAPI<Error>.check(lockdownd_get_device_name(raw, &rawName))
         guard let name = rawName else { throw Error.internal }
         return String(cString: name)
     }
 
     public func queryType() throws -> String {
         var rawType: UnsafeMutablePointer<Int8>?
-        try Self.check(lockdownd_query_type(raw, &rawType))
+        try CAPI<Error>.check(lockdownd_query_type(raw, &rawType))
         guard let type = rawType.map({ String(cString: $0) })
             else { throw Error.internal }
         return type
     }
 
     public func syncDataClasses() throws -> [String] {
-        try Self.getArrayWithCount(
+        try CAPI<Error>.getArrayWithCount(
             parseFn: { lockdownd_get_sync_data_classes(raw, &$0, &$1) },
             freeFn: { lockdownd_data_classes_free($0) }
         ) ?? []
@@ -233,21 +233,21 @@ public class LockdownClient: CAPIWrapper {
 
     public func value<T: Decodable>(ofType type: T.Type, forDomain domain: String?, key: String?) throws -> T {
         try decoder.decode(type) {
-            try Self.check(lockdownd_get_value(raw, domain, key, &$0))
+            try CAPI<Error>.check(lockdownd_get_value(raw, domain, key, &$0))
         }
     }
 
     public func setValue<T: Encodable>(_ value: T?, forDomain domain: String, key: String) throws {
         if let value = value {
-            try Self.check(encoder.withEncoded(value) {
+            try CAPI<Error>.check(encoder.withEncoded(value) {
                 lockdownd_set_value(raw, domain, key, plist_copy($0))
             })
         } else {
-            try Self.check(lockdownd_remove_value(raw, domain, key))
+            try CAPI<Error>.check(lockdownd_remove_value(raw, domain, key))
         }
     }
 
-    public func startService<T: Service>(
+    public func startService<T: LockdownService>(
         ofType type: T.Type = T.self,
         sendEscrowBag: Bool = false
     ) throws -> ServiceDescriptor<T> {
@@ -259,24 +259,24 @@ public class LockdownClient: CAPIWrapper {
     ) throws -> (sessionID: SessionID, isSSLEnabled: Bool) {
         var rawSessionID: UnsafeMutablePointer<Int8>?
         var isSSLEnabled: Int32 = 0
-        try Self.check(lockdownd_start_session(raw, hostID, &rawSessionID, &isSSLEnabled))
+        try CAPI<Error>.check(lockdownd_start_session(raw, hostID, &rawSessionID, &isSSLEnabled))
         guard let sessionID = rawSessionID else { throw Error.internal }
         return (.init(rawValue: .init(cString: sessionID)), isSSLEnabled != 0)
     }
 
     public func stopSession(_ sessionID: SessionID) throws {
-        try Self.check(lockdownd_stop_session(raw, sessionID.rawValue))
+        try CAPI<Error>.check(lockdownd_stop_session(raw, sessionID.rawValue))
     }
 
     public func send<T: Encodable>(_ value: T) throws {
-        try Self.check(encoder.withEncoded(value) {
+        try CAPI<Error>.check(encoder.withEncoded(value) {
             lockdownd_send(raw, $0)
         })
     }
 
     public func receive<T: Decodable>(_ type: T.Type) throws -> T {
         try decoder.decode(type) {
-            try Self.check(lockdownd_receive(raw, &$0))
+            try CAPI<Error>.check(lockdownd_receive(raw, &$0))
         }
     }
 
@@ -286,36 +286,36 @@ public class LockdownClient: CAPIWrapper {
         options: [String: Encodable] = ["ExtendedPairingErrors": true]
     ) throws -> D {
         try decoder.decode(returnType) { buf in
-            try Self.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) {
+            try CAPI<Error>.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) {
                 lockdownd_pair_with_options(raw, record?.raw, $0, &buf)
             })
         }
     }
 
     public func validate(record: PairRecord) throws {
-        try Self.check(lockdownd_validate_pair(raw, record.raw))
+        try CAPI<Error>.check(lockdownd_validate_pair(raw, record.raw))
     }
 
     public func unpair(withRecord record: PairRecord) throws {
-        try Self.check(lockdownd_unpair(raw, record.raw))
+        try CAPI<Error>.check(lockdownd_unpair(raw, record.raw))
     }
 
     public func activate(withActivationRecord record: [String: Encodable]) throws {
-        try Self.check(encoder.withEncoded(record.mapValues(AnyEncodable.init)) {
+        try CAPI<Error>.check(encoder.withEncoded(record.mapValues(AnyEncodable.init)) {
             lockdownd_activate(raw, $0)
         })
     }
 
     public func deactivate() throws {
-        try Self.check(lockdownd_deactivate(raw))
+        try CAPI<Error>.check(lockdownd_deactivate(raw))
     }
 
     public func enterRecovery() throws {
-        try Self.check(lockdownd_enter_recovery(raw))
+        try CAPI<Error>.check(lockdownd_enter_recovery(raw))
     }
 
     public func sendGoodbye() throws {
-        try Self.check(lockdownd_goodbye(raw))
+        try CAPI<Error>.check(lockdownd_goodbye(raw))
     }
 
 }

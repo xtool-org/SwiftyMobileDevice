@@ -90,7 +90,7 @@ extension USBMux {
         let opaqueUserData = Unmanaged.passRetained(userData).toOpaque()
 
         var context: usbmuxd_subscription_context_t?
-        try check(usbmuxd_events_subscribe(&context, { rawEvent, opaqueUserData in
+        try CAPI<Error>.check(usbmuxd_events_subscribe(&context, { rawEvent, opaqueUserData in
             let userData = Unmanaged<SubscriptionUserData>.fromOpaque(opaqueUserData!).takeUnretainedValue()
             guard let event = Event(raw: rawEvent!.pointee) else { return }
             userData.callback(event)
@@ -100,7 +100,7 @@ extension USBMux {
     }
 
     public static func unsubscribe(withToken token: SubscriptionToken) throws {
-        try check(usbmuxd_events_unsubscribe(token.context))
+        try CAPI<Error>.check(usbmuxd_events_unsubscribe(token.context))
         // balance the initial retain in `subscribe`
         Unmanaged.passUnretained(token.userData).release()
     }

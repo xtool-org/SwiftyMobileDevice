@@ -8,9 +8,9 @@
 
 import Foundation
 
-public class HeartbeatClient: Service {
+public class HeartbeatClient: LockdownService {
 
-    public enum Error: CAPIWrapperError {
+    public enum Error: CAPIError {
         case unknown
         case `internal`
         case invalidArg
@@ -34,6 +34,7 @@ public class HeartbeatClient: Service {
         }
     }
 
+    public typealias Raw = heartbeat_client_t
     public static let serviceIdentifier = HEARTBEAT_SERVICE_NAME
     public static let newFunc: NewFunc = heartbeat_client_new
     public static let startFunc: StartFunc = heartbeat_client_start_service
@@ -45,12 +46,12 @@ public class HeartbeatClient: Service {
     private let decoder = PlistNodeDecoder()
 
     public func send<T: Encodable>(_ value: T) throws {
-        try Self.check(encoder.withEncoded(value) { heartbeat_send(raw, $0) })
+        try CAPI<Error>.check(encoder.withEncoded(value) { heartbeat_send(raw, $0) })
     }
 
     public func receive<T: Decodable>(_ type: T.Type, timeout: TimeInterval? = nil) throws -> T {
         try decoder.decode(type) { buf in
-            try Self.check(
+            try CAPI<Error>.check(
                 timeout.map {
                     heartbeat_receive_with_timeout(raw, &buf, .init($0 * 1000))
                 } ?? heartbeat_receive(raw, &buf)

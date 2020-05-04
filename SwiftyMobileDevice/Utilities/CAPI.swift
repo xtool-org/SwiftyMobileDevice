@@ -1,5 +1,5 @@
 //
-//  CAPIWrapper.swift
+//  CAPI.swift
 //  SwiftyMobileDevice
 //
 //  Created by Kabir Oberai on 13/11/19.
@@ -8,25 +8,21 @@
 
 import Foundation
 
-public enum CAPIError: Error {
+public enum CAPIGenericError: Error {
     case unexpectedNil
 }
 
-public protocol CAPIWrapperError: Swift.Error {
+public protocol CAPIError: Swift.Error {
     associatedtype Raw
     init?(_ raw: Raw)
 }
 
-public protocol CAPIWrapper: class {
-    associatedtype Error: CAPIWrapperError
-    associatedtype Raw
-    var raw: Raw { get }
-}
+public enum CAPI<Error: CAPIError> {}
 
-extension CAPIWrapper {
+extension CAPI {
 
     static func check(_ error: Error.Raw) throws {
-        if let error = Error(error) { throw error }
+        try Error(error).map { throw $0 }
     }
 
     static func getArrayWithCount(
@@ -51,7 +47,7 @@ extension CAPIWrapper {
     ) throws -> [String] {
         var rawValues: UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>?
         try Self.check(parseFn(&rawValues))
-        guard let values = rawValues else { throw CAPIError.unexpectedNil }
+        guard let values = rawValues else { throw CAPIGenericError.unexpectedNil }
 
         defer { freeFn(values) }
 
@@ -79,13 +75,10 @@ extension CAPIWrapper {
         maxLength: Int,
         parseFn: (UnsafeMutablePointer<Int8>, inout UInt32) -> Error.Raw
     ) throws -> Data {
-        let data = UnsafeMutablePointer<Int8>.allocate(capacity: maxLength)
-        defer { data.deallocate() }
+        let bytes = UnsafeMutablePointer<Int8>.allocate(capacity: maxLength)
         var received: UInt32 = 0
-
-        try check(parseFn(data, &received))
-
-        return Data(bytes: data, count: .init(received))
+        try check(parseFn(bytes, &received))
+        return Data(bytesNoCopy: bytes, count: .init(received), deallocator: .custom { ptr, _ in ptr.deallocate() })
     }
 
 }
