@@ -10,7 +10,7 @@ import Foundation
 
 public class AFCClient: LockdownService {
 
-    public enum Error: CAPIError {
+    public enum Error: CAPIError, LocalizedError {
         case unknown
         case `internal`
         case opHeaderInvalid
@@ -101,6 +101,10 @@ public class AFCClient: LockdownService {
                 self = .forceSignedType
             default: self = .unknown
             }
+        }
+
+        public var errorDescription: String? {
+            "AFCClient.Error.\(self)"
         }
     }
 

@@ -10,7 +10,7 @@ import Foundation
 
 public class InstallationProxyClient: LockdownService {
 
-    public enum Error: CAPIError {
+    public enum Error: CAPIError, LocalizedError {
         case unknown
         case `internal`
         case invalidArg
@@ -213,6 +213,10 @@ public class InstallationProxyClient: LockdownService {
             default:
                 self = .unknown
             }
+        }
+
+        public var errorDescription: String? {
+            "InstallationProxyClient.Error.\(self)"
         }
     }
 

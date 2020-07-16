@@ -10,7 +10,7 @@ import Foundation
 
 public class HeartbeatClient: LockdownService {
 
-    public enum Error: CAPIError {
+    public enum Error: CAPIError, LocalizedError {
         case unknown
         case `internal`
         case invalidArg
@@ -31,6 +31,10 @@ public class HeartbeatClient: LockdownService {
             case HEARTBEAT_E_TIMEOUT: self = .timeout
             default: self = .unknown
             }
+        }
+
+        public var errorDescription: String? {
+            "HeartbeatClient.Error.\(self)"
         }
     }
 

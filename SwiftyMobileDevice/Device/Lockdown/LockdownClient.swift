@@ -10,7 +10,7 @@ import Foundation
 
 public class LockdownClient {
 
-    public enum Error: CAPIError {
+    public enum Error: CAPIError, LocalizedError {
         case unknown
         case `internal`
         case invalidArg
@@ -138,6 +138,10 @@ public class LockdownClient {
             default:
                 self = .unknown
             }
+        }
+
+        public var errorDescription: String? {
+            "LockdownClient.Error.\(self)"
         }
     }
 
