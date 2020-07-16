@@ -52,11 +52,7 @@ public class Device {
     deinit { idevice_free(raw) }
 
     public func udid() throws -> String {
-        var optionalUDID: UnsafeMutablePointer<Int8>?
-        try CAPI<Error>.check(idevice_get_udid(raw, &optionalUDID))
-        guard let udid = optionalUDID else { throw Error.internal }
-        defer { free(udid) }
-        return String(cString: udid)
+        try CAPI<Error>.getString { idevice_get_udid(raw, &$0) }
     }
 
     public func handle() throws -> UInt32 {

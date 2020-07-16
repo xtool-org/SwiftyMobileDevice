@@ -17,6 +17,10 @@ public protocol CAPIError: Swift.Error {
     init?(_ raw: Raw)
 }
 
+public enum CAPINoError: CAPIError {
+    public init?(_ raw: Void) { nil }
+}
+
 public enum CAPI<Error: CAPIError> {}
 
 extension CAPI {
@@ -79,6 +83,38 @@ extension CAPI {
         var received: UInt32 = 0
         try check(parseFn(bytes, &received))
         return Data(bytesNoCopy: bytes, count: .init(received), deallocator: .custom { ptr, _ in ptr.deallocate() })
+    }
+
+    // if `isOwner`, we're responsible for freeing the data
+    static func getData(
+        isOwner: Bool = true,
+        parseFn: (inout UnsafeMutablePointer<Int8>?, inout UInt32) -> Error.Raw
+    ) throws -> Data {
+        var optionalBuf: UnsafeMutablePointer<Int8>?
+        var length: UInt32 = 0
+        try check(parseFn(&optionalBuf, &length))
+        let buf = try optionalBuf.orThrow(CAPIGenericError.unexpectedNil)
+        let count = Int(length)
+        if isOwner {
+            return Data(bytesNoCopy: buf, count: count, deallocator: .free)
+        } else {
+            return Data(bytes: buf, count: count)
+        }
+    }
+
+    static func getString(
+        isOwner: Bool = true,
+        parseFn: (inout UnsafeMutablePointer<Int8>?) -> Error.Raw
+    ) throws -> String {
+        var bytes: UnsafeMutablePointer<Int8>?
+        try check(parseFn(&bytes))
+        return try bytes.flatMap {
+            if isOwner {
+                return String(bytesNoCopy: $0, length: strlen($0), encoding: .utf8, freeWhenDone: true)
+            } else {
+                return String(cString: $0)
+            }
+        }.orThrow(CAPIGenericError.unexpectedNil)
     }
 
 }

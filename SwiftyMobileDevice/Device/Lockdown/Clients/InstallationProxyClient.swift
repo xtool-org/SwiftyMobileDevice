@@ -231,12 +231,16 @@ public class InstallationProxyClient: LockdownService {
             var rawDetails: UnsafeMutablePointer<Int8>?
             var rawCode: UInt64 = 0
             guard let type = Error(instproxy_status_get_error(raw, &rawName, &rawDetails, &rawCode)),
-                let name = rawName.map({ String(cString: $0) })
+                let name = rawName.flatMap({
+                    String(bytesNoCopy: $0, length: strlen($0), encoding: .utf8, freeWhenDone: true)
+                })
                 else { return nil }
 
             self.type = type
             self.name = name
-            self.details = rawDetails.map { String(cString: $0) }
+            self.details = rawDetails.flatMap {
+                String(bytesNoCopy: $0, length: strlen($0), encoding: .utf8, freeWhenDone: true)
+            }
             self.code = .init(rawCode)
         }
 
@@ -314,7 +318,7 @@ public class InstallationProxyClient: LockdownService {
 
     public func install(
         package: URL,
-        options: Options,
+        options: Options = .init(),
         progress: @escaping (InstallProgress) -> Void,
         completion: @escaping (Result<(), Swift.Error>) -> Void
     ) {
@@ -337,10 +341,14 @@ public class InstallationProxyClient: LockdownService {
                         return complete(.failure(error))
                     }
 
-                    var rawStatusName: UnsafeMutablePointer<Int8>?
-                    instproxy_status_get_name(rawStatus, &rawStatusName)
-                    guard let statusName = rawStatusName.map({ String(cString: $0) })
-                        else { return complete(.failure(Error.unknown)) }
+                    let statusName: String
+                    do {
+                        statusName = try CAPI<CAPINoError>.getString {
+                            instproxy_status_get_name(rawStatus, &$0)
+                        }
+                    } catch {
+                        return complete(.failure(error))
+                    }
 
                     if statusName == "Complete" {
                         return complete(.success(()))

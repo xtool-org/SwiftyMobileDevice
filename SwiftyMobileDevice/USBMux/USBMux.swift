@@ -15,9 +15,10 @@ public enum USBMux {
 
         public var errorDescription: String? {
             switch self {
-            case .errno(let errnum):
-                let str = strerror(.init(errnum))
-                return String(cString: str!)
+            case .errno(let raw):
+                // We need to make a copy here. strerror uses a static buffer for
+                // unknown errors, which may be overwritten by future calls.
+                return String(cString: strerror(raw)!)
             }
         }
 
@@ -27,7 +28,7 @@ public enum USBMux {
         }
     }
 
-    public enum ConnectionType {
+    public enum ConnectionType: Equatable, Hashable {
         case usb
         case network
 
@@ -67,9 +68,14 @@ public enum USBMux {
             self.productID = raw.product_id
 
             var udidRaw = raw.udid
-            let udidBuf = UnsafeRawBufferPointer(start: &udidRaw.0, count: MemoryLayout.size(ofValue: udidRaw))
-            guard let udid = String(bytes: udidBuf.bindMemory(to: UInt8.self), encoding: .utf8) else { return nil }
-            self.udid = udid
+            let udidSize = MemoryLayout.size(ofValue: udidRaw)
+            self.udid = withUnsafePointer(to: &udidRaw) {
+                UnsafeRawPointer($0)
+                    // Tuple is also bound to type of elements (if homogeneous) so this is legal
+                    .assumingMemoryBound(to: Int8.self)
+                    // UInt8 has same size and stride as Int8 so this is okay too
+                    .withMemoryRebound(to: UInt8.self, capacity: udidSize, String.init(cString:))
+            }
 
             guard let connectionType = ConnectionType(raw: raw.conn_type) else { return nil }
             self.connectionType = connectionType
@@ -80,31 +86,24 @@ public enum USBMux {
     }
 
     public static func buid() throws -> String {
-        var buidBytes: UnsafeMutablePointer<Int8>?
-        try CAPI<Error>.check(usbmuxd_read_buid(&buidBytes))
-        defer { free(buidBytes) }
-        return String(cString: buidBytes!)
+        try CAPI<Error>.getString { usbmuxd_read_buid(&$0) }
     }
 
-    public static func pairRecord(withID id: String) throws -> Data {
-        var recordData: UnsafeMutablePointer<Int8>?
-        var recordSize: UInt32 = 0
-        try CAPI<Error>.check(usbmuxd_read_pair_record(id, &recordData, &recordSize))
-        defer { free(recordData) }
-        return Data(bytes: recordData!, count: Int(recordSize))
+    public static func pairRecord(forUDID udid: String) throws -> Data {
+        try CAPI<Error>.getData { usbmuxd_read_pair_record(udid, &$0, &$1) }
     }
 
-    public static func savePairRecord(_ record: Data, withID id: String, handle: Device.Handle? = nil) throws {
+    public static func savePairRecord(_ record: Data, forUDID udid: String, handle: Device.Handle? = nil) throws {
         try record.withUnsafeBytes { buf in
             let bound = buf.bindMemory(to: Int8.self)
             try CAPI<Error>.check(
-                usbmuxd_save_pair_record_with_device_id(id, handle?.raw ?? 0, bound.baseAddress, .init(bound.count))
+                usbmuxd_save_pair_record_with_device_id(udid, handle?.raw ?? 0, bound.baseAddress, .init(bound.count))
             )
         }
     }
 
-    public static func deletePairRecord(withID id: String) throws {
-        try CAPI<Error>.check(usbmuxd_delete_pair_record(id))
+    public static func deletePairRecord(forUDID udid: String) throws {
+        try CAPI<Error>.check(usbmuxd_delete_pair_record(udid))
     }
 
     public static func setUseInotify(_ useInotify: Bool) {

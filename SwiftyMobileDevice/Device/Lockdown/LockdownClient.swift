@@ -178,6 +178,7 @@ public class LockdownClient {
         public init(rawValue: String) { self.rawValue = rawValue }
     }
 
+    // TODO: Make PairRecord constructable
     public class PairRecord {
         public let raw: lockdownd_pair_record_t
         public init(raw: lockdownd_pair_record_t) {
@@ -194,7 +195,7 @@ public class LockdownClient {
         var client: lockdownd_client_t?
         try CAPI<Error>.check(
             (performHandshake ? lockdownd_client_new_with_handshake : lockdownd_client_new)(
-                device.raw, &client, strdup(label)
+                device.raw, &client, label
             )
         )
         guard let raw = client else { throw Error.internal }
@@ -207,25 +208,15 @@ public class LockdownClient {
     }
 
     public func deviceUDID() throws -> String {
-        var rawUDID: UnsafeMutablePointer<Int8>?
-        try CAPI<Error>.check(lockdownd_get_device_udid(raw, &rawUDID))
-        guard let udid = rawUDID else { throw Error.internal }
-        return String(cString: udid)
+        try CAPI<Error>.getString { lockdownd_get_device_udid(raw, &$0) }
     }
 
     public func deviceName() throws -> String {
-        var rawName: UnsafeMutablePointer<Int8>?
-        try CAPI<Error>.check(lockdownd_get_device_name(raw, &rawName))
-        guard let name = rawName else { throw Error.internal }
-        return String(cString: name)
+        try CAPI<Error>.getString { lockdownd_get_device_name(raw, &$0) }
     }
 
     public func queryType() throws -> String {
-        var rawType: UnsafeMutablePointer<Int8>?
-        try CAPI<Error>.check(lockdownd_query_type(raw, &rawType))
-        guard let type = rawType.map({ String(cString: $0) })
-            else { throw Error.internal }
-        return type
+        try CAPI<Error>.getString { lockdownd_query_type(raw, &$0) }
     }
 
     public func syncDataClasses() throws -> [String] {
@@ -243,9 +234,8 @@ public class LockdownClient {
 
     public func setValue<T: Encodable>(_ value: T?, forDomain domain: String, key: String) throws {
         if let value = value {
-            try CAPI<Error>.check(encoder.withEncoded(value) {
-                lockdownd_set_value(raw, domain, key, plist_copy($0))
-            })
+            // this follows move semantics, so we aren't responsible for freeing the created plist_t
+            try CAPI<Error>.check(lockdownd_set_value(raw, domain, key, encoder.encode(value)))
         } else {
             try CAPI<Error>.check(lockdownd_remove_value(raw, domain, key))
         }
@@ -261,11 +251,11 @@ public class LockdownClient {
     public func startSession(
         withHostID hostID: String
     ) throws -> (sessionID: SessionID, isSSLEnabled: Bool) {
-        var rawSessionID: UnsafeMutablePointer<Int8>?
         var isSSLEnabled: Int32 = 0
-        try CAPI<Error>.check(lockdownd_start_session(raw, hostID, &rawSessionID, &isSSLEnabled))
-        guard let sessionID = rawSessionID else { throw Error.internal }
-        return (.init(rawValue: .init(cString: sessionID)), isSSLEnabled != 0)
+        let sessionID = try CAPI<Error>.getString {
+            lockdownd_start_session(raw, hostID, &$0, &isSSLEnabled)
+        }
+        return (.init(rawValue: sessionID), isSSLEnabled != 0)
     }
 
     public func stopSession(_ sessionID: SessionID) throws {
@@ -284,9 +274,18 @@ public class LockdownClient {
         }
     }
 
+    public func pair(
+        withRecord record: PairRecord? = nil,
+        options: [String: Encodable] = ["ExtendedPairingErrors": true]
+    ) throws {
+        try CAPI<Error>.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) {
+            lockdownd_pair_with_options(raw, record?.raw, $0, nil)
+        })
+    }
+
     public func pair<D: Decodable>(
-        withRecord record: PairRecord?,
         returnType: D.Type,
+        record: PairRecord? = nil,
         options: [String: Encodable] = ["ExtendedPairingErrors": true]
     ) throws -> D {
         try decoder.decode(returnType) { buf in

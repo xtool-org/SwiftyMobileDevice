@@ -57,8 +57,8 @@ extension USBMux {
             }
         }
 
-        let kind: Kind
-        let device: Device
+        public let kind: Kind
+        public let device: Device
 
         init?(raw: usbmuxd_event_t) {
             guard let kind = Kind(raw: .init(.init(raw.event))),
@@ -85,6 +85,7 @@ extension USBMux {
         }
     }
 
+    // TODO: Do something similar to Device.swift here, with a single global handler instead
     public static func subscribe(withCallback callback: @escaping (Event) -> Void) throws -> SubscriptionToken {
         let userData = SubscriptionUserData(callback: callback)
         let opaqueUserData = Unmanaged.passRetained(userData).toOpaque()

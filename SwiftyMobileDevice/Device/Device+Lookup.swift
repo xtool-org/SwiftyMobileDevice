@@ -47,6 +47,7 @@ extension Device {
                 let connectionType = ConnectionType(rawValue: Int(raw.conn_type))
                 else { return nil }
             self.eventType = eventType
+            // we don't own `raw` so we need to copy the udid string
             self.udid = String(cString: raw.udid)
             self.connectionType = connectionType
         }
@@ -54,6 +55,23 @@ extension Device {
 
     public class SubscriptionToken {
         fileprivate init() {}
+    }
+
+    private class Subscription {
+        private weak var token: SubscriptionToken?
+        private let callback: (Event) -> Void
+
+        init(token: SubscriptionToken, callback: @escaping (Event) -> Void) {
+            self.token = token
+            self.callback = callback
+        }
+
+        /// - Returns: whether `token` is alive
+        func notify(withEvent event: Event) -> Bool {
+            guard token != nil else { return false }
+            callback(event)
+            return true
+        }
     }
 
     public static func udids() throws -> [String] {
@@ -64,7 +82,7 @@ extension Device {
     }
 
     private static var subscriptionLock = NSLock()
-    private static var subscribers: [ObjectIdentifier: (Event) -> Void] = [:]
+    private static var subscribers: [ObjectIdentifier: Subscription] = [:]
     private static var isSubscribed = false
 
     private static func actuallySubscribeIfNeeded() {
@@ -74,7 +92,12 @@ extension Device {
             guard let rawEvent = eventPointer?.pointee,
                 let event = Event(raw: rawEvent)
                 else { return }
-            Device.subscribers.values.forEach { $0(event) }
+            // notify subscribers and remove the ones where token has been deallocated
+            Device.subscribers.filter { _, subscription in
+                !subscription.notify(withEvent: event)
+            }.forEach { key, _ in
+                Device.subscribers.removeValue(forKey: key)
+            }
         }, nil)
     }
 
@@ -83,7 +106,7 @@ extension Device {
         defer { subscriptionLock.unlock() }
         actuallySubscribeIfNeeded()
         let token = SubscriptionToken()
-        subscribers[ObjectIdentifier(token)] = callback
+        subscribers[ObjectIdentifier(token)] = Subscription(token: token, callback: callback)
         return token
     }
 
