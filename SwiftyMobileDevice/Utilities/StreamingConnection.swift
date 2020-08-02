@@ -37,7 +37,7 @@ extension StreamingConnection {
     /// - Returns: the number of bytes sent
     public func send(_ data: Data) throws -> Int {
         var sent: UInt32 = 0
-        try data.withUnsafeBytes { bytes in
+        try data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
             let bound = bytes.bindMemory(to: Int8.self)
             try CAPI<Error>.check(
                 sendFunc(raw, bound.baseAddress!, .init(bound.count), &sent)

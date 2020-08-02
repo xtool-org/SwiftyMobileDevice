@@ -68,11 +68,11 @@ extension CAPI {
         freeFn: (UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>) -> Void
     ) throws -> [String: String] {
         let strings = try getNullTerminatedArray(parseFn: parseFn, freeFn: freeFn)
-        return Dictionary(
-            uniqueKeysWithValues: stride(from: 0, to: strings.count, by: 2).map {
-                (strings[$0], strings[$0 + 1])
-            }
-        )
+        // Note: build performance
+        let pairs = stride(from: 0, to: strings.count, by: 2).map { (idx: Int) -> (String, String) in
+            (strings[idx], strings[idx + 1])
+        }
+        return Dictionary(uniqueKeysWithValues: pairs)
     }
 
     static func getData(

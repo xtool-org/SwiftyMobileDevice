@@ -32,7 +32,7 @@ class PlistNodeEncoder {
         let data = try encoder.encode([value])
 
         var optionalArray: plist_t?
-        data.withUnsafeBytes { buf in
+        data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in
             let bound = buf.bindMemory(to: Int8.self)
             plist_from_bin(bound.baseAddress!, UInt32(bound.count), &optionalArray)
         }

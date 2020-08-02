@@ -316,6 +316,39 @@ public class InstallationProxyClient: LockdownService {
 
     private let encoder = PlistNodeEncoder()
 
+    private static func installCallback(rawStatus: plist_t?, rawUserData: UnsafeMutableRawPointer?) {
+        let unmanagedUserData = Unmanaged<InstallUserData>.fromOpaque(rawUserData!)
+        let userData = unmanagedUserData.takeUnretainedValue()
+
+        func complete(_ result: Result<(), Swift.Error>) {
+            userData.completion(result)
+            unmanagedUserData.release()
+        }
+
+        if let error = StatusError(raw: rawStatus!) {
+            return complete(.failure(error))
+        }
+
+        let statusName: String
+        do {
+            statusName = try CAPI<CAPINoError>.getString {
+                instproxy_status_get_name(rawStatus, &$0)
+            }
+        } catch {
+            return complete(.failure(error))
+        }
+
+        if statusName == "Complete" {
+            return complete(.success(()))
+        }
+
+        var rawPercent: Int32 = -1
+        instproxy_status_get_percent_complete(rawStatus, &rawPercent)
+        let progress = rawPercent >= 0 ? (Double(rawPercent) / 100) : nil
+
+        userData.progress(.init(details: statusName, progress: progress))
+    }
+
     public func install(
         package: URL,
         options: Options = .init(),
@@ -326,45 +359,19 @@ public class InstallationProxyClient: LockdownService {
             .passRetained(InstallUserData(progress: progress, completion: completion))
             .toOpaque()
 
-        if let error = try? Error(package.withUnsafeFileSystemRepresentation { path in
-            try encoder.withEncoded(options) { rawOptions in
-                instproxy_install(raw, path, rawOptions, { _, rawStatus, rawUserData in
-                    let unmanagedUserData = Unmanaged<InstallUserData>.fromOpaque(rawUserData!)
-                    let userData = unmanagedUserData.takeUnretainedValue()
-
-                    func complete(_ result: Result<(), Swift.Error>) {
-                        userData.completion(result)
-                        unmanagedUserData.release()
-                    }
-
-                    if let error = StatusError(raw: rawStatus!) {
-                        return complete(.failure(error))
-                    }
-
-                    let statusName: String
-                    do {
-                        statusName = try CAPI<CAPINoError>.getString {
-                            instproxy_status_get_name(rawStatus, &$0)
-                        }
-                    } catch {
-                        return complete(.failure(error))
-                    }
-
-                    if statusName == "Complete" {
-                        return complete(.success(()))
-                    }
-
-                    var rawPercent: Int32 = -1
-                    instproxy_status_get_percent_complete(rawStatus, &rawPercent)
-                    let progress = rawPercent >= 0 ? (Double(rawPercent) / 100) : nil
-
-                    userData.progress(.init(details: statusName, progress: progress))
-                }, rawUserData)
+        do {
+            // Note: build performance
+            let err = try encoder.withEncoded(options) { (rawOptions: plist_t) -> instproxy_error_t in
+                package.withUnsafeFileSystemRepresentation { (path: UnsafePointer<Int8>?) -> instproxy_error_t in
+                    instproxy_install(raw, path, rawOptions, { (_, status: plist_t?, data: UnsafeMutableRawPointer?) in
+                        InstallationProxyClient.installCallback(rawStatus: status, rawUserData: data)
+                    }, rawUserData)
+                }
             }
-        }) {
-            completion(.failure(error))
+            try CAPI<Error>.check(err)
+        } catch {
+            return completion(.failure(error))
         }
     }
 
 }
-
