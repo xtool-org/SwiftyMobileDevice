@@ -178,11 +178,67 @@ public class LockdownClient {
         public init(rawValue: String) { self.rawValue = rawValue }
     }
 
-    // TODO: Make PairRecord constructable and allow accessing its fields
-    public class PairRecord {
-        public let raw: lockdownd_pair_record_t
+    // TODO: Test this
+    public struct PairRecord {
+        // these certificates must be PEM-encoded
+        public var deviceCertificate: Data
+        public var hostCertificate: Data
+        public var rootCertificate: Data
+
+        public var hostID: String
+        public var systemBUID: String
+
+        public init(
+            deviceCertificate: Data,
+            hostCertificate: Data,
+            rootCertificate: Data,
+            hostID: String,
+            systemBUID: String
+        ) {
+            self.deviceCertificate = deviceCertificate
+            self.hostCertificate = hostCertificate
+            self.rootCertificate = rootCertificate
+            self.hostID = hostID
+            self.systemBUID = systemBUID
+        }
+
+        // the members of `raw` are copied
+        public init(raw: lockdownd_pair_record) {
+            // data from NUL terminated bytes
+            func data(from bytes: UnsafePointer<Int8>) -> Data {
+                Data(bytes: bytes, count: strlen(bytes))
+            }
+            deviceCertificate = data(from: raw.device_certificate)
+            hostCertificate = data(from: raw.host_certificate)
+            rootCertificate = data(from: raw.root_certificate)
+            hostID = String(cString: raw.host_id)
+            systemBUID = String(cString: raw.system_buid)
+        }
+
         public init(raw: lockdownd_pair_record_t) {
-            self.raw = raw
+            self.init(raw: raw.pointee)
+        }
+
+        public func withRaw<Result>(_ block: (lockdownd_pair_record_t) throws -> Result) rethrows -> Result {
+            try deviceCertificate.withUnsafeBytes { buf in
+                let boundDeviceCertificate = UnsafeMutableBufferPointer(mutating: buf.bindMemory(to: Int8.self))
+                return try hostCertificate.withUnsafeBytes { buf in
+                    let boundHostCertificate = UnsafeMutableBufferPointer(mutating: buf.bindMemory(to: Int8.self))
+                    return try rootCertificate.withUnsafeBytes { buf in
+                        let boundRootCertificate = UnsafeMutableBufferPointer(mutating: buf.bindMemory(to: Int8.self))
+                        var record = lockdownd_pair_record(
+                            device_certificate: boundDeviceCertificate.baseAddress!,
+                            host_certificate: boundHostCertificate.baseAddress!,
+                            root_certificate: boundRootCertificate.baseAddress!,
+                            host_id: UnsafeMutablePointer(mutating: hostID),
+                            system_buid: UnsafeMutablePointer(mutating: systemBUID)
+                        )
+                        return try withUnsafeMutablePointer(to: &record) { ptr in
+                            try block(ptr)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -274,12 +330,23 @@ public class LockdownClient {
         }
     }
 
+    private func withRawRecord<Result>(
+        _ record: PairRecord?,
+        _ block: (lockdownd_pair_record_t?) throws -> Result
+    ) rethrows -> Result {
+        if let record = record {
+            return try record.withRaw { try block($0) }
+        } else {
+            return try block(nil)
+        }
+    }
+
     public func pair(
         withRecord record: PairRecord? = nil,
         options: [String: Encodable] = ["ExtendedPairingErrors": true]
     ) throws {
-        try CAPI<Error>.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) {
-            lockdownd_pair_with_options(raw, record?.raw, $0, nil)
+        try CAPI<Error>.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) { encodedOptions in
+            withRawRecord(record) { lockdownd_pair_with_options(raw, $0, encodedOptions, nil) }
         })
     }
 
@@ -289,18 +356,26 @@ public class LockdownClient {
         options: [String: Encodable] = ["ExtendedPairingErrors": true]
     ) throws -> D {
         try decoder.decode(returnType) { buf in
-            try CAPI<Error>.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) {
-                lockdownd_pair_with_options(raw, record?.raw, $0, &buf)
+            try CAPI<Error>.check(encoder.withEncoded(options.mapValues(AnyEncodable.init)) { encodedOptions in
+                withRawRecord(record) { lockdownd_pair_with_options(raw, $0, encodedOptions, &buf) }
             })
         }
     }
 
-    public func validate(record: PairRecord) throws {
-        try CAPI<Error>.check(lockdownd_validate_pair(raw, record.raw))
+    private func validateRecord(_ record: PairRecord?) throws {
+        try CAPI<Error>.check(withRawRecord(record) { lockdownd_validate_pair(raw, $0) })
     }
 
-    public func unpair(withRecord record: PairRecord) throws {
-        try CAPI<Error>.check(lockdownd_unpair(raw, record.raw))
+    public func validate(record: PairRecord) throws {
+        try validateRecord(record)
+    }
+
+    public func validateInternalRecord() throws {
+        try validateRecord(nil)
+    }
+
+    public func unpair(withRecord record: PairRecord? = nil) throws {
+        try CAPI<Error>.check(withRawRecord(record) { lockdownd_unpair(raw, $0) })
     }
 
     public func activate(withActivationRecord record: [String: Encodable]) throws {
