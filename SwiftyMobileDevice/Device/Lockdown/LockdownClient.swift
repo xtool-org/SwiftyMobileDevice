@@ -178,7 +178,7 @@ public class LockdownClient {
         public init(rawValue: String) { self.rawValue = rawValue }
     }
 
-    // TODO: Make PairRecord constructable
+    // TODO: Make PairRecord constructable and allow accessing its fields
     public class PairRecord {
         public let raw: lockdownd_pair_record_t
         public init(raw: lockdownd_pair_record_t) {
