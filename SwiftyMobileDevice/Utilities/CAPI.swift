@@ -82,7 +82,7 @@ extension CAPI {
         let bytes = UnsafeMutablePointer<Int8>.allocate(capacity: maxLength)
         var received: UInt32 = 0
         try check(parseFn(bytes, &received))
-        return Data(bytesNoCopy: bytes, count: .init(received), deallocator: .custom { ptr, _ in ptr.deallocate() })
+        return Data(bytesNoCopy: bytes, count: .init(received), deallocator: .deallocate)
     }
 
     // if `isOwner`, we're responsible for freeing the data

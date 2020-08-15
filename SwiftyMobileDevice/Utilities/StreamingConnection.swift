@@ -23,7 +23,7 @@ public protocol StreamingConnection {
 extension StreamingConnection {
 
     public typealias SendFunc = (
-        Raw, UnsafePointer<Int8>, UInt32, UnsafeMutablePointer<UInt32>
+        Raw, UnsafePointer<Int8>?, UInt32, UnsafeMutablePointer<UInt32>
     ) -> Error.Raw
 
     public typealias ReceiveFunc = (
@@ -40,7 +40,7 @@ extension StreamingConnection {
         try data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
             let bound = bytes.bindMemory(to: Int8.self)
             try CAPI<Error>.check(
-                sendFunc(raw, bound.baseAddress!, .init(bound.count), &sent)
+                sendFunc(raw, bound.baseAddress, .init(bound.count), &sent)
             )
         }
         return .init(sent)

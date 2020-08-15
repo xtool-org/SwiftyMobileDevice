@@ -181,32 +181,39 @@ public class LockdownClient {
     // TODO: Test this
     public struct PairRecord {
         // these certificates must be PEM-encoded
-        public var deviceCertificate: Data
-        public var hostCertificate: Data
-        public var rootCertificate: Data
+        public let deviceCertificate: Data
+        public let hostCertificate: Data
+        public let rootCertificate: Data
 
-        public var hostID: String
-        public var systemBUID: String
+        public let hostID: String
+        public let systemBUID: String
 
-        public init(
+        public init?(
             deviceCertificate: Data,
             hostCertificate: Data,
             rootCertificate: Data,
             hostID: String,
             systemBUID: String
         ) {
-            self.deviceCertificate = deviceCertificate
-            self.hostCertificate = hostCertificate
-            self.rootCertificate = rootCertificate
+            func nullTerminating(_ data: Data) -> Data {
+                if data.last == 0 { return data }
+                var copy = data
+                copy.append(0)
+                return copy
+            }
+
+            self.deviceCertificate = nullTerminating(deviceCertificate)
+            self.hostCertificate = nullTerminating(hostCertificate)
+            self.rootCertificate = nullTerminating(rootCertificate)
             self.hostID = hostID
             self.systemBUID = systemBUID
         }
 
         // the members of `raw` are copied
         public init(raw: lockdownd_pair_record) {
-            // data from NUL terminated bytes
+            // data from null terminated bytes
             func data(from bytes: UnsafePointer<Int8>) -> Data {
-                Data(bytes: bytes, count: strlen(bytes))
+                Data(bytes: bytes, count: strlen(bytes) + 1) // include NUL byte
             }
             deviceCertificate = data(from: raw.device_certificate)
             hostCertificate = data(from: raw.host_certificate)
@@ -226,6 +233,8 @@ public class LockdownClient {
                     let boundHostCertificate = UnsafeMutableBufferPointer(mutating: buf.bindMemory(to: Int8.self))
                     return try rootCertificate.withUnsafeBytes { buf in
                         let boundRootCertificate = UnsafeMutableBufferPointer(mutating: buf.bindMemory(to: Int8.self))
+                        // the base addresses are known to be non-nil because the data values are
+                        // null terminated so they have to have at least one byte (the NUL character)
                         var record = lockdownd_pair_record(
                             device_certificate: boundDeviceCertificate.baseAddress!,
                             host_certificate: boundHostCertificate.baseAddress!,
