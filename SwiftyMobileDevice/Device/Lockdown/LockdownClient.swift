@@ -233,17 +233,23 @@ public class LockdownClient {
                     let boundHostCertificate = UnsafeMutableBufferPointer(mutating: buf.bindMemory(to: Int8.self))
                     return try rootCertificate.withUnsafeBytes { buf in
                         let boundRootCertificate = UnsafeMutableBufferPointer(mutating: buf.bindMemory(to: Int8.self))
-                        // the base addresses are known to be non-nil because the data values are
-                        // null terminated so they have to have at least one byte (the NUL character)
-                        var record = lockdownd_pair_record(
-                            device_certificate: boundDeviceCertificate.baseAddress!,
-                            host_certificate: boundHostCertificate.baseAddress!,
-                            root_certificate: boundRootCertificate.baseAddress!,
-                            host_id: UnsafeMutablePointer(mutating: hostID),
-                            system_buid: UnsafeMutablePointer(mutating: systemBUID)
-                        )
-                        return try withUnsafeMutablePointer(to: &record) { ptr in
-                            try block(ptr)
+                        return try hostID.withCString { cHostID in
+                            let mutableHostID = UnsafeMutablePointer(mutating: cHostID)
+                            return try systemBUID.withCString { cSystemBUID in
+                                let mutableSystemBUID = UnsafeMutablePointer(mutating: cSystemBUID)
+                                // the base addresses are known to be non-nil because the data values are
+                                // null terminated so they have to have at least one byte (the NUL character)
+                                var record = lockdownd_pair_record(
+                                    device_certificate: boundDeviceCertificate.baseAddress!,
+                                    host_certificate: boundHostCertificate.baseAddress!,
+                                    root_certificate: boundRootCertificate.baseAddress!,
+                                    host_id: mutableHostID,
+                                    system_buid: mutableSystemBUID
+                                )
+                                return try withUnsafeMutablePointer(to: &record) { ptr in
+                                    try block(ptr)
+                                }
+                            }
                         }
                     }
                 }
