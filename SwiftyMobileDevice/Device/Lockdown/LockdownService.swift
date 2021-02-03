@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import libimobiledevice
 
 public protocol LockdownService {
 

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import libimobiledevice
 
 public class Device {
 
@@ -42,10 +43,53 @@ public class Device {
         idevice_set_debug_level(.init(level.rawValue))
     }
 
+    public enum ConnectionType {
+        case usb
+        case network
+
+        public var raw: idevice_connection_type {
+            switch self {
+            case .usb: return CONNECTION_USBMUXD
+            case .network: return CONNECTION_NETWORK
+            }
+        }
+
+        public init?(raw: idevice_connection_type) {
+            switch raw {
+            case CONNECTION_USBMUXD: self = .usb
+            case CONNECTION_NETWORK: self = .network
+            default: return nil
+            }
+        }
+    }
+
+    public enum LookupMode {
+        case only(ConnectionType)
+        case both(preferring: ConnectionType)
+
+        public var raw: idevice_options {
+            switch self {
+            case .only(.usb): return IDEVICE_LOOKUP_USBMUX
+            case .only(.network): return IDEVICE_LOOKUP_NETWORK
+            case .both(preferring: .usb):
+                return .init(
+                    IDEVICE_LOOKUP_USBMUX.rawValue |
+                        IDEVICE_LOOKUP_NETWORK.rawValue
+                )
+            case .both(preferring: .network):
+                return .init(
+                    IDEVICE_LOOKUP_USBMUX.rawValue |
+                        IDEVICE_LOOKUP_NETWORK.rawValue |
+                        IDEVICE_LOOKUP_PREFER_NETWORK.rawValue
+                )
+            }
+        }
+    }
+
     public let raw: idevice_t
-    public init(udid: String) throws {
+    public init(udid: String, lookupMode: LookupMode = .only(.usb)) throws {
         var device: idevice_t?
-        try CAPI<Error>.check(idevice_new(&device, udid))
+        try CAPI<Error>.check(idevice_new_with_options(&device, udid, lookupMode.raw))
         guard let raw = device else { throw Error.internal }
         self.raw = raw
     }

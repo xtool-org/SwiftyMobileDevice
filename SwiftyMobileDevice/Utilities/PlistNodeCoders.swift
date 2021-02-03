@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import plist
 
 class PlistNodeEncoder {
     enum Error: Swift.Error {

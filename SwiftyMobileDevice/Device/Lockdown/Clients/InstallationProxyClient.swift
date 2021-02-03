@@ -7,6 +7,8 @@
 //
 
 import Foundation
+import libimobiledevice
+import plist
 
 public class InstallationProxyClient: LockdownService {
 

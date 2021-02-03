@@ -7,8 +7,22 @@
 //
 
 import Foundation
+import libimobiledevice
 
 extension Device {
+
+    public struct Info {
+        let udid: String
+        let connectionType: ConnectionType
+
+        // copies from raw
+        init?(raw: idevice_info) {
+            guard let connectionType = ConnectionType(raw: raw.conn_type)
+                else { return nil }
+            self.udid = String(cString: raw.udid)
+            self.connectionType = connectionType
+        }
+    }
 
     public struct Event {
         public enum EventType {
@@ -34,17 +48,13 @@ extension Device {
             }
         }
 
-        public enum ConnectionType: Int {
-            case usbmuxd = 1
-        }
-
         public let eventType: EventType
         public let udid: String
         public let connectionType: ConnectionType
 
         public init?(raw: idevice_event_t) {
             guard let eventType = EventType(raw.event),
-                let connectionType = ConnectionType(rawValue: Int(raw.conn_type))
+                  let connectionType = ConnectionType(raw: raw.conn_type)
                 else { return nil }
             self.eventType = eventType
             // we don't own `raw` so we need to copy the udid string
@@ -74,11 +84,25 @@ extension Device {
         }
     }
 
+    @available(*, deprecated, renamed: "devices")
     public static func udids() throws -> [String] {
         try CAPI<Error>.getArrayWithCount(
             parseFn: { idevice_get_device_list(&$0, &$1) },
             freeFn: { idevice_device_list_free($0) }
         ) ?? []
+    }
+
+    public static func devices() throws -> [Info] {
+        var deviceList: UnsafeMutablePointer<idevice_info_t?>?
+        var count: Int32 = 0
+        try CAPI<Error>.check(idevice_get_device_list_extended(&deviceList, &count))
+
+        guard let devices = deviceList else { throw CAPIGenericError.unexpectedNil }
+        defer { idevice_device_list_extended_free(deviceList) }
+
+        return UnsafeBufferPointer(start: devices, count: Int(count))
+            .compactMap { $0?.pointee }
+            .compactMap(Info.init)
     }
 
     private static var subscriptionLock = NSLock()
