@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import libimobiledevice
+import usbmuxd
 
 extension USBMux {
 

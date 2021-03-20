@@ -301,11 +301,9 @@ public class AFCClient: LockdownService {
         }
     }
 
-    public func linkItem(at url: URL, to newURL: URL, type: LinkType) throws {
-        try url.withUnsafeFileSystemRepresentation { path in
-            try newURL.withUnsafeFileSystemRepresentation { newPath in
-                try CAPI<Error>.check(afc_make_link(raw, type.raw, path, newPath))
-            }
+    public func linkItem(at destination: String, to newURL: URL, type: LinkType) throws {
+        try newURL.withUnsafeFileSystemRepresentation { newPath in
+            try CAPI<Error>.check(afc_make_link(raw, type.raw, destination, newPath))
         }
     }
 
