@@ -21,6 +21,12 @@ public protocol LockdownService {
     static var newFunc: NewFunc { get }
     static var startFunc: StartFunc { get }
 
+    // adds a customization point for service descriptors
+    // (used by DebugserverClient)
+    static func startService(
+        withFunc fn: (String) throws -> lockdownd_service_descriptor_t
+    ) throws -> lockdownd_service_descriptor_t
+
     init(raw: Raw)
 
 }
@@ -35,7 +41,7 @@ public extension LockdownService {
         idevice_t, UnsafeMutablePointer<Raw?>?, UnsafePointer<Int8>?
     ) -> Error.Raw
 
-    init(device: Device, service: LockdownClient.ServiceDescriptor<Self>) throws {
+    init(device: Device, service: LockdownClient.ServiceDescriptor) throws {
         var client: Raw?
         try CAPI<Error>.check(Self.newFunc(device.raw, service.raw, &client))
         guard let raw = client else { throw CAPIGenericError.unexpectedNil }
@@ -47,6 +53,12 @@ public extension LockdownService {
         try CAPI<Error>.check(Self.startFunc(device.raw, &client, label))
         guard let raw = client else { throw CAPIGenericError.unexpectedNil }
         self.init(raw: raw)
+    }
+
+    static func startService(
+        withFunc fn: (String) throws -> lockdownd_service_descriptor_t
+    ) throws -> lockdownd_service_descriptor_t {
+        try fn(serviceIdentifier)
     }
 
 }

@@ -93,6 +93,7 @@ extension CAPI {
         var optionalBuf: UnsafeMutablePointer<Int8>?
         var length: UInt32 = 0
         try check(parseFn(&optionalBuf, &length))
+        guard length != 0 else { return Data() }
         let buf = try optionalBuf.orThrow(CAPIGenericError.unexpectedNil)
         let count = Int(length)
         if isOwner {

@@ -10,6 +10,10 @@ import Foundation
 import libimobiledevice
 import plist
 
+private func requestCallbackC(command: plist_t?, status: plist_t?, userData: UnsafeMutableRawPointer?) {
+    InstallationProxyClient.requestCallback(rawCommand: command, rawStatus: status, rawUserData: userData)
+}
+
 public class InstallationProxyClient: LockdownService {
 
     public enum Error: CAPIError, LocalizedError {
@@ -251,7 +255,7 @@ public class InstallationProxyClient: LockdownService {
         }
     }
 
-    public struct InstallProgress {
+    public struct RequestProgress {
         public let details: String
         public let progress: Double?
     }
@@ -261,6 +265,7 @@ public class InstallationProxyClient: LockdownService {
         public var skipUninstall: Bool?
         public var applicationSINF: Data?
         public var itunesMetadata: Data?
+        public var applicationType: String?
         public var returnAttributes: [String]?
         public var additionalOptions: [String: String] = [:]
 
@@ -268,6 +273,7 @@ public class InstallationProxyClient: LockdownService {
             case skipUninstall = "SkipUninstall"
             case applicationSINF = "ApplicationSINF"
             case itunesMetadata = "iTunesMetadata"
+            case applicationType = "ApplicationType"
             case returnAttributes = "ReturnAttributes"
         }
 
@@ -276,6 +282,7 @@ public class InstallationProxyClient: LockdownService {
             try skipUninstall.map { try keyedContainer.encode($0, forKey: .skipUninstall) }
             try applicationSINF.map { try keyedContainer.encode($0, forKey: .applicationSINF) }
             try itunesMetadata.map { try keyedContainer.encode($0, forKey: .itunesMetadata) }
+            try applicationType.map { try keyedContainer.encode($0, forKey: .applicationType)}
             try returnAttributes.map { try keyedContainer.encode($0, forKey: .returnAttributes) }
             try additionalOptions.encode(to: encoder)
         }
@@ -284,27 +291,38 @@ public class InstallationProxyClient: LockdownService {
             skipUninstall: Bool? = nil,
             applicationSINF: Data? = nil,
             itunesMetadata: Data? = nil,
+            applicationType: String? = nil,
             returnAttributes: [String]? = nil,
             additionalOptions: [String: String] = [:]
         ) {
             self.skipUninstall = skipUninstall
             self.applicationSINF = applicationSINF
             self.itunesMetadata = itunesMetadata
+            self.applicationType = applicationType
             self.returnAttributes = returnAttributes
             self.additionalOptions = additionalOptions
         }
     }
 
-    private class InstallUserData {
-        var isIncomplete = true
-        let progress: (InstallProgress) -> Void
+    private class RequestUserData {
+        enum Updater {
+            // list is moved
+            case browse((_ currIndex: Int, _ total: Int, _ list: plist_t?) -> Void)
+            case progress((RequestProgress) -> Void)
+        }
+
+        let updater: Updater
         let completion: (Result<(), Swift.Error>) -> Void
         init(
-            progress: @escaping (InstallProgress) -> Void,
+            updater: Updater,
             completion: @escaping (Result<(), Swift.Error>) -> Void
         ) {
-            self.progress = progress
+            self.updater = updater
             self.completion = completion
+        }
+
+        func toOpaqueRetained() -> UnsafeMutableRawPointer {
+            Unmanaged.passRetained(self).toOpaque()
         }
     }
 
@@ -317,9 +335,10 @@ public class InstallationProxyClient: LockdownService {
     deinit { instproxy_client_free(raw) }
 
     private let encoder = PlistNodeEncoder()
+    private let decoder = PlistNodeDecoder()
 
-    private static func installCallback(rawStatus: plist_t?, rawUserData: UnsafeMutableRawPointer?) {
-        let unmanagedUserData = Unmanaged<InstallUserData>.fromOpaque(rawUserData!)
+    fileprivate static func requestCallback(rawCommand: plist_t?, rawStatus: plist_t?, rawUserData: UnsafeMutableRawPointer?) {
+        let unmanagedUserData = Unmanaged<RequestUserData>.fromOpaque(rawUserData!)
         let userData = unmanagedUserData.takeUnretainedValue()
 
         func complete(_ result: Result<(), Swift.Error>) {
@@ -331,49 +350,143 @@ public class InstallationProxyClient: LockdownService {
             return complete(.failure(error))
         }
 
-        let statusName: String
-        do {
-            statusName = try CAPI<CAPINoError>.getString {
+        let statusName = Result {
+            try CAPI<CAPINoError>.getString {
                 instproxy_status_get_name(rawStatus, &$0)
             }
-        } catch {
-            return complete(.failure(error))
         }
+        let isComplete = (try? statusName.get()) == "Complete"
 
-        if statusName == "Complete" {
-            return complete(.success(()))
+        switch userData.updater {
+        case .browse(let callback):
+            var total: UInt64 = 0
+            var currIndex: UInt64 = 0
+            var currAmount: UInt64 = 0
+            var list: plist_t?
+            instproxy_status_get_current_list(rawStatus, &total, &currIndex, &currAmount, &list)
+            callback(Int(currIndex), Int(total), list)
+            if isComplete { complete(.success(())) }
+        case .progress(let callback):
+            // in the progress case we don't want a progress update on completion
+            if isComplete { return complete(.success(())) }
+            var rawPercent: Int32 = -1
+            instproxy_status_get_percent_complete(rawStatus, &rawPercent)
+            let progress = rawPercent >= 0 ? (Double(rawPercent) / 100) : nil
+            statusName.get(withErrorHandler: complete).map {
+                callback(.init(details: $0, progress: progress))
+            }
         }
-
-        var rawPercent: Int32 = -1
-        instproxy_status_get_percent_complete(rawStatus, &rawPercent)
-        let progress = rawPercent >= 0 ? (Double(rawPercent) / 100) : nil
-
-        userData.progress(.init(details: statusName, progress: progress))
     }
 
     public func install(
         package: URL,
+        upgrade: Bool = false,
         options: Options = .init(),
-        progress: @escaping (InstallProgress) -> Void,
+        progress: @escaping (RequestProgress) -> Void,
         completion: @escaping (Result<(), Swift.Error>) -> Void
     ) {
         let rawUserData = Unmanaged
-            .passRetained(InstallUserData(progress: progress, completion: completion))
+            .passRetained(RequestUserData(updater: .progress(progress), completion: completion))
             .toOpaque()
+
+        let fn = upgrade ? instproxy_upgrade : instproxy_install
 
         do {
             // Note: build performance
             let err = try encoder.withEncoded(options) { (rawOptions: plist_t) -> instproxy_error_t in
                 package.withUnsafeFileSystemRepresentation { (path: UnsafePointer<Int8>?) -> instproxy_error_t in
-                    instproxy_install(raw, path, rawOptions, { (_, status: plist_t?, data: UnsafeMutableRawPointer?) in
-                        InstallationProxyClient.installCallback(rawStatus: status, rawUserData: data)
-                    }, rawUserData)
+                    fn(raw, path, rawOptions, requestCallbackC, rawUserData)
                 }
             }
             try CAPI<Error>.check(err)
         } catch {
             return completion(.failure(error))
         }
+    }
+
+    public func archive(
+        app: String,
+        options: Options = .init(),
+        progress: @escaping (RequestProgress) -> Void,
+        completion: @escaping (Result<(), Swift.Error>) -> Void
+    ) throws {
+        let rawUserData = RequestUserData(updater: .progress(progress), completion: completion)
+            .toOpaqueRetained()
+        try encoder.withEncoded(options) {
+            try CAPI<Error>.check(instproxy_archive(raw, app, $0, requestCallbackC, rawUserData))
+        }
+    }
+
+    public func restore(
+        app: String,
+        options: Options = .init(),
+        progress: @escaping (RequestProgress) -> Void,
+        completion: @escaping (Result<(), Swift.Error>) -> Void
+    ) throws {
+        let rawUserData = RequestUserData(updater: .progress(progress), completion: completion)
+            .toOpaqueRetained()
+        try encoder.withEncoded(options) {
+            try CAPI<Error>.check(instproxy_restore(raw, app, $0, requestCallbackC, rawUserData))
+        }
+    }
+
+    public func lookupArchives<T: Decodable>(resultType: T.Type) throws -> [String: T] {
+        return try decoder.decode([String: T].self) { (result: inout plist_t?) throws -> Void in
+            try CAPI<Error>.check(instproxy_lookup_archives(raw, nil, &result))
+        }
+    }
+
+    public func removeArchive(
+        app: String,
+        progress: @escaping (RequestProgress) -> Void,
+        completion: @escaping (Result<(), Swift.Error>) -> Void
+    ) throws {
+        let rawUserData = RequestUserData(updater: .progress(progress), completion: completion)
+            .toOpaqueRetained()
+        try CAPI<Error>.check(instproxy_remove_archive(raw, app, nil, requestCallbackC, rawUserData))
+    }
+
+    public func lookup<T: Decodable>(
+        resultType: T.Type,
+        apps: [String],
+        options: Options = .init()
+    ) throws -> [String: T] {
+        let rawIDs = apps.map { strdup($0) }
+        defer { rawIDs.forEach { free($0) } }
+
+        var ids = rawIDs.map { UnsafePointer($0) }
+
+        return try decoder.decode([String: T].self) { (result: inout plist_t?) throws -> Void in
+            try encoder.withEncoded(options) { (rawOpts: plist_t) throws -> Void in
+                try CAPI<Error>.check(instproxy_lookup(raw, &ids, rawOpts, &result))
+            }
+        }
+    }
+
+    public func browse<T: Decodable>(
+        resultType: T.Type,
+        options: Options = .init(),
+        progress: @escaping (_ currIndex: Int, _ total: Int, _ apps: Result<[T], Swift.Error>) -> Void,
+        completion: @escaping (Result<(), Swift.Error>) -> Void
+    ) throws {
+        let updater = RequestUserData.Updater.browse { currIdx, total, rawApps in
+            let apps = rawApps.map { unwrapped in
+                Result { try self.decoder.decode([T].self, moving: unwrapped) }
+            } ?? .success([])
+            progress(currIdx, total, apps)
+        }
+        let rawUserData = RequestUserData(updater: updater, completion: completion)
+            .toOpaqueRetained()
+        try encoder.withEncoded(options) { rawOpts in
+            instproxy_browse_with_callback(raw, rawOpts, requestCallbackC, rawUserData)
+        }
+    }
+
+    public func executable(forBundleID bundleID: String) throws -> URL {
+        var rawPath: UnsafeMutablePointer<Int8>?
+        try CAPI<Error>.check(instproxy_client_get_path_for_bundle_identifier(raw, bundleID, &rawPath))
+        guard let path = rawPath else { throw CAPIGenericError.unexpectedNil }
+        return URL(fileURLWithFileSystemRepresentation: path, isDirectory: false, relativeTo: nil)
     }
 
 }

@@ -146,32 +146,33 @@ public class LockdownClient {
         }
     }
 
-    public class ServiceDescriptor<T: LockdownService> {
+    public final class ServiceDescriptor {
+        public let port: UInt16
+        public let isSSLEnabled: Bool
+        public let identifier: String
 
         public let raw: lockdownd_service_descriptor_t
-        public init(raw: lockdownd_service_descriptor_t) { self.raw = raw }
-        public init(client: LockdownClient, sendEscrowBag: Bool = false) throws {
-            var descriptor: lockdownd_service_descriptor_t?
-            try CAPI<Error>.check(
-                (sendEscrowBag ? lockdownd_start_service_with_escrow_bag : lockdownd_start_service)(
-                    client.raw, T.serviceIdentifier, &descriptor
-                )
-            )
-            guard let raw = descriptor else { throw Error.internal }
+        public init(raw: lockdownd_service_descriptor_t) {
             self.raw = raw
+            self.port = raw.pointee.port
+            self.isSSLEnabled = raw.pointee.ssl_enabled != 0
+            self.identifier = String(cString: raw.pointee.identifier)
         }
+
+        public convenience init<T: LockdownService>(client: LockdownClient, type: T.Type = T.self, sendEscrowBag: Bool = false) throws {
+            let raw = try T.startService { id in
+                var descriptor: lockdownd_service_descriptor_t?
+                try CAPI<Error>.check(
+                    (sendEscrowBag ? lockdownd_start_service_with_escrow_bag : lockdownd_start_service)(
+                        client.raw, id, &descriptor
+                    )
+                )
+                return try descriptor.orThrow(Error.internal)
+            }
+            self.init(raw: raw)
+        }
+
         deinit { lockdownd_service_descriptor_free(raw) }
-
-        public var port: UInt16 {
-            get { raw.pointee.port }
-            set { raw.pointee.port = newValue }
-        }
-
-        public var isSSLEnabled: Bool {
-            get { raw.pointee.ssl_enabled != 0 }
-            set { raw.pointee.ssl_enabled = newValue ? 1 : 0 }
-        }
-
     }
 
     public struct SessionID: RawRepresentable {
@@ -316,8 +317,8 @@ public class LockdownClient {
     public func startService<T: LockdownService>(
         ofType type: T.Type = T.self,
         sendEscrowBag: Bool = false
-    ) throws -> ServiceDescriptor<T> {
-        try ServiceDescriptor(client: self, sendEscrowBag: sendEscrowBag)
+    ) throws -> ServiceDescriptor {
+        try ServiceDescriptor(client: self, type: T.self, sendEscrowBag: sendEscrowBag)
     }
 
     public func startSession(
