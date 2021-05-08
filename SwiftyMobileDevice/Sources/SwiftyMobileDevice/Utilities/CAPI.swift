@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Superutils
 
 public enum CAPIGenericError: Error {
     case unexpectedNil

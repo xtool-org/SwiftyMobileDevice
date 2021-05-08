@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Superutils
 import plist
 
 class PlistNodeEncoder {
@@ -78,6 +79,8 @@ class PlistNodeDecoder {
         plist_array_append_item(array, node)
 
         let data = try CAPI<CAPINoError>.getData { plist_to_bin(array, &$0, &$1) }
+
+        try? print(PropertyListSerialization.propertyList(from: data, options: [], format: nil))
 
         let decoded = try decoder.decode([T].self, from: data)
         guard decoded.count == 1 else { throw Error.failedToDecode }

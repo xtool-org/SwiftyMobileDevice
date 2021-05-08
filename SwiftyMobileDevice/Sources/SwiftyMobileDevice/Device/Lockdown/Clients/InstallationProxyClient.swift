@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Superutils
 import libimobiledevice
 import plist
 
