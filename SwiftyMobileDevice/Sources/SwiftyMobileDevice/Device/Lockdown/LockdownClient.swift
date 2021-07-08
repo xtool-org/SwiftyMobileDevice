@@ -181,7 +181,6 @@ public class LockdownClient {
         public init(rawValue: String) { self.rawValue = rawValue }
     }
 
-    // TODO: Test this
     public struct PairRecord {
         // these certificates must be PEM-encoded
         public let deviceCertificate: Data
