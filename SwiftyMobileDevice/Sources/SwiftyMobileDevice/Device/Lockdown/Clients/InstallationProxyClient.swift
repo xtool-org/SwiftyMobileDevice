@@ -368,14 +368,18 @@ public class InstallationProxyClient: LockdownService {
             callback(Int(currIndex), Int(total), list)
             if isComplete { complete(.success(())) }
         case .progress(let callback):
-            // in the progress case we don't want a progress update on completion
-            if isComplete { return complete(.success(())) }
-            var rawPercent: Int32 = -1
-            instproxy_status_get_percent_complete(rawStatus, &rawPercent)
-            let progress = rawPercent >= 0 ? (Double(rawPercent) / 100) : nil
+            let progress: Double?
+            if isComplete {
+                progress = 1
+            } else {
+                var rawPercent: Int32 = -1
+                instproxy_status_get_percent_complete(rawStatus, &rawPercent)
+                progress = rawPercent >= 0 ? (Double(rawPercent) / 100) : nil
+            }
             statusName.get(withErrorHandler: complete).map {
                 callback(.init(details: $0, progress: progress))
             }
+            if isComplete { return complete(.success(())) }
         }
     }
 
