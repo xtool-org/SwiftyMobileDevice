@@ -17,7 +17,7 @@ extension Device {
 
         // copies from raw
         init?(raw: idevice_info) {
-            guard let connectionType = ConnectionType(raw: raw.conn_type)
+            guard let connectionType = ConnectionType(ideviceRaw: raw.conn_type)
                 else { return nil }
             self.udid = String(cString: raw.udid)
             self.connectionType = connectionType
@@ -54,7 +54,7 @@ extension Device {
 
         public init?(raw: idevice_event_t) {
             guard let eventType = EventType(raw.event),
-                  let connectionType = ConnectionType(raw: raw.conn_type)
+                  let connectionType = ConnectionType(ideviceRaw: raw.conn_type)
                 else { return nil }
             self.eventType = eventType
             // we don't own `raw` so we need to copy the udid string

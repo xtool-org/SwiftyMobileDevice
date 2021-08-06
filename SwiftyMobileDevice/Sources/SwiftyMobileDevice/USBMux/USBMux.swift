@@ -9,6 +9,23 @@
 import Foundation
 import usbmuxd
 
+extension ConnectionType {
+    public var usbmuxRaw: usbmux_connection_type {
+        switch self {
+        case .usb: return CONNECTION_TYPE_USB
+        case .network: return CONNECTION_TYPE_NETWORK
+        }
+    }
+
+    public init?(usbmuxRaw: usbmux_connection_type) {
+        switch usbmuxRaw {
+        case CONNECTION_TYPE_USB: self = .usb
+        case CONNECTION_TYPE_NETWORK: self = .network
+        default: return nil
+        }
+    }
+}
+
 public enum USBMux {
 
     public enum Error: LocalizedError, CAPIError {
@@ -26,26 +43,6 @@ public enum USBMux {
         public init?(_ raw: Int32) {
             guard raw != 0 else { return nil }
             self = .errno(raw)
-        }
-    }
-
-    public enum ConnectionType: Equatable, Hashable {
-        case usb
-        case network
-
-        public var raw: usbmux_connection_type {
-            switch self {
-            case .usb: return CONNECTION_TYPE_USB
-            case .network: return CONNECTION_TYPE_NETWORK
-            }
-        }
-
-        public init?(raw: usbmux_connection_type) {
-            switch raw {
-            case CONNECTION_TYPE_USB: self = .usb
-            case CONNECTION_TYPE_NETWORK: self = .network
-            default: return nil
-            }
         }
     }
 
@@ -78,7 +75,7 @@ public enum USBMux {
                     .withMemoryRebound(to: UInt8.self, capacity: udidSize, String.init(cString:))
             }
 
-            guard let connectionType = ConnectionType(raw: raw.conn_type) else { return nil }
+            guard let connectionType = ConnectionType(usbmuxRaw: raw.conn_type) else { return nil }
             self.connectionType = connectionType
 
             var dataRaw = raw.conn_data
