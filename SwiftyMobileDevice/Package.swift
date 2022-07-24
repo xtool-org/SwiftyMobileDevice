@@ -2,6 +2,16 @@
 
 import PackageDescription
 
+extension Product.Library.LibraryType {
+    static var smart: Self {
+        #if os(Linux)
+        return .static
+        #else
+        return .dynamic
+        #endif
+    }
+}
+
 let package = Package(
     name: "SwiftyMobileDevice",
     platforms: [
@@ -11,7 +21,7 @@ let package = Package(
     products: [
         .library(
             name: "SwiftyMobileDevice",
-            type: .dynamic,
+            type: .smart,
             targets: ["SwiftyMobileDevice"]
         ),
     ],
