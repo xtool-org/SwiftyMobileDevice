@@ -12,8 +12,8 @@ import libimobiledevice
 extension Device {
 
     public struct Info {
-        let udid: String
-        let connectionType: ConnectionType
+        public let udid: String
+        public let connectionType: ConnectionType
 
         // copies from raw
         init?(raw: idevice_info) {

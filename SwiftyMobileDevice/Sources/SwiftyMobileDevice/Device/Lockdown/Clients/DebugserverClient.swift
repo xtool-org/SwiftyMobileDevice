@@ -62,7 +62,7 @@ public class DebugserverClient: LockdownService {
     @discardableResult
     public func send(command commandName: String, arguments: [String]) throws -> Data {
         var cArgs: [UnsafeMutablePointer<Int8>?] = arguments.map { strdup($0) }
-        defer { cArgs.forEach { free($0) } }
+        defer { cArgs.forEach { $0.map { free($0) } } }
         var rawCommand: debugserver_command_t?
         try CAPI<Error>.check(debugserver_command_new(commandName, Int32(cArgs.count), &cArgs, &rawCommand))
         guard let command = rawCommand else { throw Error.internal }
@@ -89,7 +89,7 @@ public class DebugserverClient: LockdownService {
     public func launch(executable: URL, arguments: [String]) throws -> String {
         var rawArgs = [executable.withUnsafeFileSystemRepresentation { strdup($0!) }]
             + arguments.map { strdup($0) }
-        defer { rawArgs.forEach { free($0) } }
+        defer { rawArgs.forEach { $0.map { free($0) } } }
         return try CAPI<Error>.getString {
             debugserver_client_set_argv(raw, Int32(rawArgs.count), &rawArgs, &$0)
         }

@@ -6,7 +6,7 @@ let package = Package(
     name: "SwiftyMobileDevice",
     platforms: [
         .iOS("13.0"),
-        .macOS("10.11")
+        .macOS("10.15")
     ],
     products: [
         .library(

@@ -409,6 +409,26 @@ public class InstallationProxyClient: LockdownService {
         }
     }
 
+    public func uninstall(
+        bundleID: String,
+        options: Options = .init(),
+        progress: @escaping (RequestProgress) -> Void,
+        completion: @escaping (Result<(), Swift.Error>) -> Void
+    ) {
+        let rawUserData = Unmanaged
+            .passRetained(RequestUserData(updater: .progress(progress), completion: completion))
+            .toOpaque()
+
+        do {
+            let err = try encoder.withEncoded(options) { (rawOptions: plist_t) -> instproxy_error_t in
+                instproxy_uninstall(raw, bundleID, rawOptions, requestCallbackC, rawUserData)
+            }
+            try CAPI<Error>.check(err)
+        } catch {
+            return completion(.failure(error))
+        }
+    }
+
     public func archive(
         app: String,
         options: Options = .init(),
@@ -457,7 +477,7 @@ public class InstallationProxyClient: LockdownService {
         options: Options = .init()
     ) throws -> [String: T] {
         let rawIDs = apps.map { strdup($0) }
-        defer { rawIDs.forEach { free($0) } }
+        defer { rawIDs.forEach { $0.map { free($0) } } }
 
         var ids = rawIDs.map { UnsafePointer($0) }
 
