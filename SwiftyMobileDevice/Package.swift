@@ -33,6 +33,7 @@ let package = Package(
             name: "SwiftyMobileDevice",
             dependencies: [
                 .product(name: "plist", package: "SuperchargeCore"),
+                .product(name: "libimobiledeviceGlue", package: "SuperchargeCore"),
                 .product(name: "usbmuxd", package: "SuperchargeCore"),
                 .product(name: "libimobiledevice", package: "SuperchargeCore"),
                 .product(name: "Superutils", package: "SuperchargeCore")
