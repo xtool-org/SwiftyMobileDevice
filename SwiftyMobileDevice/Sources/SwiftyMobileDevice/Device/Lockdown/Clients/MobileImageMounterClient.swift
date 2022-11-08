@@ -73,6 +73,7 @@ public class MobileImageMounterClient: LockdownService {
                 mobile_image_mounter_upload_image(
                     raw, imageType, size, bound.baseAddress!, UInt16(bound.count),
                     { chunk, size, rawUserData in
+                        // swiftlint:disable:previous opening_brace
                         let file = Unmanaged<InputStream>.fromOpaque(rawUserData!).takeUnretainedValue()
                         let bytesRead = file.read(chunk!.assumingMemoryBound(to: UInt8.self), maxLength: size)
                         return bytesRead == 0 ? -1 : bytesRead

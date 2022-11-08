@@ -55,6 +55,7 @@ public class LockdownClient {
         case mcProtected
         case mcChallengeRequired
 
+        // swiftlint:disable:next cyclomatic_complexity
         public init?(_ raw: lockdownd_error_t) {
             switch raw {
             case LOCKDOWN_E_SUCCESS:
@@ -160,7 +161,9 @@ public class LockdownClient {
             self.identifier = String(cString: raw.pointee.identifier)
         }
 
-        public convenience init<T: LockdownService>(client: LockdownClient, type: T.Type = T.self, sendEscrowBag: Bool = false) throws {
+        public convenience init<T: LockdownService>(
+            client: LockdownClient, type: T.Type = T.self, sendEscrowBag: Bool = false
+        ) throws {
             let raw = try T.startService { id in
                 var descriptor: lockdownd_service_descriptor_t?
                 try CAPI<Error>.check(

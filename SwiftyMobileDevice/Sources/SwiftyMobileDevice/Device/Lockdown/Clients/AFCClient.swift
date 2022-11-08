@@ -42,6 +42,7 @@ public class AFCClient: LockdownService {
         case dirNotEmpty
         case forceSignedType
 
+        // swiftlint:disable:next cyclomatic_complexity
         public init?(_ raw: afc_error_t) {
             switch raw {
             case AFC_E_SUCCESS:

@@ -85,6 +85,7 @@ public class InstallationProxyClient: LockdownService {
         case uninstallProhibited
         case missingBundleVersion
 
+        // swiftlint:disable:next cyclomatic_complexity function_body_length
         public init?(_ raw: instproxy_error_t) {
             switch raw {
             case INSTPROXY_E_SUCCESS:
@@ -283,7 +284,7 @@ public class InstallationProxyClient: LockdownService {
             try skipUninstall.map { try keyedContainer.encode($0, forKey: .skipUninstall) }
             try applicationSINF.map { try keyedContainer.encode($0, forKey: .applicationSINF) }
             try itunesMetadata.map { try keyedContainer.encode($0, forKey: .itunesMetadata) }
-            try applicationType.map { try keyedContainer.encode($0, forKey: .applicationType)}
+            try applicationType.map { try keyedContainer.encode($0, forKey: .applicationType) }
             try returnAttributes.map { try keyedContainer.encode($0, forKey: .returnAttributes) }
             try additionalOptions.encode(to: encoder)
         }

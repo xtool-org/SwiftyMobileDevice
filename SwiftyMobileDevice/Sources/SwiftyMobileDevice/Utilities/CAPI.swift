@@ -57,6 +57,7 @@ extension CAPI {
         defer { freeFn(values) }
 
         return sequence(state: values) { (
+            // swiftlint:disable:next closure_parameter_position
             currValue: inout UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>
         ) -> UnsafeMutablePointer<Int8>? in
             defer { currValue += 1 }
