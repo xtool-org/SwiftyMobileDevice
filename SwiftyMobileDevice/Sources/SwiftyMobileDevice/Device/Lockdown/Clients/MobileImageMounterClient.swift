@@ -71,7 +71,7 @@ public class MobileImageMounterClient: LockdownService {
             let bound = buf.bindMemory(to: Int8.self)
             try CAPI<Error>.check(
                 mobile_image_mounter_upload_image(
-                    raw, imageType, size, bound.baseAddress!, UInt16(bound.count),
+                    raw, imageType, size, bound.baseAddress!, .init(bound.count),
                     { chunk, size, rawUserData in
                         // swiftlint:disable:previous opening_brace
                         let file = Unmanaged<InputStream>.fromOpaque(rawUserData!).takeUnretainedValue()
@@ -95,7 +95,7 @@ public class MobileImageMounterClient: LockdownService {
                 return try decoder.decode(resultType) {
                     try CAPI<Error>.check(
                         mobile_image_mounter_mount_image(
-                            raw, destRaw, sigBound.baseAddress, UInt16(sigBound.count), imageType, &$0
+                            raw, destRaw, sigBound.baseAddress, .init(sigBound.count), imageType, &$0
                         )
                     )
                 }
