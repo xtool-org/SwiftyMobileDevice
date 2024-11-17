@@ -26,7 +26,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/kabiroberai/SuperchargeCore", .upToNextMinor(from: "1.1.0")),
+        .package(url: "https://github.com/SuperchargeApp/SuperchargeCore", .upToNextMinor(from: "1.1.0")),
     ],
     targets: [
         .target(

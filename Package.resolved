@@ -1,0 +1,16 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "SuperchargeCore",
+        "repositoryURL": "https://github.com/SuperchargeApp/SuperchargeCore",
+        "state": {
+          "branch": null,
+          "revision": "570d27aa538379f94196ec44bae440ef243bb666",
+          "version": "1.1.1"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
