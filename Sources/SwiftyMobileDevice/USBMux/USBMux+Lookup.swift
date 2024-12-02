@@ -113,10 +113,10 @@ extension USBMux {
 
         let count = usbmuxd_get_device_list(&devices)
         switch count {
-        case ..<0:
-            throw Error.errno(.init(count))
-        case 0:
+        case 0, -111: // 111=ECONNREFUSED. Often means no devices are connected.
             return []
+        case ..<0:
+            throw Error.errno(-.init(count))
         default:
             return UnsafeBufferPointer(start: devices!, count: .init(count)).compactMap(Device.init)
         }
@@ -136,7 +136,7 @@ extension USBMux {
         case 0: // not found
             return nil
         case let error: // error (-ve)
-            throw Error.errno(.init(error))
+            throw Error.errno(-.init(error))
         }
     }
 
