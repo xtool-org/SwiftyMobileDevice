@@ -10,7 +10,7 @@ import Foundation
 import Superutils
 import libimobiledevice
 
-public class LockdownClient {
+public final class LockdownClient: Sendable {
 
     public enum Error: CAPIError, LocalizedError {
         case unknown
@@ -265,7 +265,7 @@ public class LockdownClient {
     private let encoder = PlistNodeEncoder()
     private let decoder = PlistNodeDecoder()
 
-    public let raw: lockdownd_client_t
+    public nonisolated(unsafe) let raw: lockdownd_client_t
     public init(raw: lockdownd_client_t) { self.raw = raw }
     public init(device: Device, label: String?, performHandshake: Bool) throws {
         var client: lockdownd_client_t?

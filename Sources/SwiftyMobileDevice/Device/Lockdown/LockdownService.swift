@@ -9,7 +9,7 @@
 import Foundation
 import libimobiledevice
 
-public protocol LockdownService {
+public protocol LockdownService: Sendable {
 
     associatedtype Error: CAPIError
 

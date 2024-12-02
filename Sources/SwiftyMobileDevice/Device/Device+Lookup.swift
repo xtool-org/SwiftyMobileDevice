@@ -24,8 +24,8 @@ extension Device {
         }
     }
 
-    public struct Event {
-        public enum EventType {
+    public struct Event: Sendable {
+        public enum EventType: Sendable {
             case add
             case remove
             case paired
@@ -63,27 +63,6 @@ extension Device {
         }
     }
 
-    public class SubscriptionToken {
-        fileprivate init() {}
-    }
-
-    private class Subscription {
-        private weak var token: SubscriptionToken?
-        private let callback: (Event) -> Void
-
-        init(token: SubscriptionToken, callback: @escaping (Event) -> Void) {
-            self.token = token
-            self.callback = callback
-        }
-
-        /// - Returns: whether `token` is alive
-        func notify(withEvent event: Event) -> Bool {
-            guard token != nil else { return false }
-            callback(event)
-            return true
-        }
-    }
-
     @available(*, deprecated, renamed: "devices")
     public static func udids() throws -> [String] {
         try CAPI<Error>.getArrayWithCount(
@@ -105,44 +84,59 @@ extension Device {
             .compactMap(Info.init)
     }
 
-    private static var subscriptionLock = NSLock()
-    private static var subscribers: [ObjectIdentifier: Subscription] = [:]
-    private static var isSubscribed = false
+    public static func subscribe() async -> AsyncStream<Device.Event> {
+        await SubscriptionManager.shared.subscribe()
+    }
 
-    private static func actuallySubscribeIfNeeded() {
-        guard !isSubscribed else { return }
-        isSubscribed = true
-        idevice_event_subscribe({ eventPointer, _ in
+}
+
+private actor SubscriptionManager {
+    static let shared = SubscriptionManager()
+
+    private var subscriptionContext: idevice_subscription_context_t?
+    private var subscribers: [ObjectIdentifier: @Sendable (Device.Event) -> Void] = [:]
+
+    private func yield(event: Device.Event) {
+        for (_, subscriber) in subscribers {
+            subscriber(event)
+        }
+    }
+
+    private final class SubscriptionToken: Sendable {
+        fileprivate init() {}
+    }
+
+    private func actuallySubscribe() {
+        var context: idevice_subscription_context_t?
+        idevice_events_subscribe(&context, { @Sendable eventPointer, _ in
             guard let rawEvent = eventPointer?.pointee,
-                let event = Event(raw: rawEvent)
-                else { return }
-            // notify subscribers and remove the ones where token has been deallocated
-            Device.subscribers.filter { _, subscription in
-                !subscription.notify(withEvent: event)
-            }.forEach { key, _ in
-                Device.subscribers.removeValue(forKey: key)
+                  let event = Device.Event(raw: rawEvent)
+                  else { return }
+            Task {
+                await SubscriptionManager.shared.yield(event: event)
             }
         }, nil)
+        self.subscriptionContext = context
     }
 
-    public static func subscribe(callback: @escaping (Event) -> Void) -> SubscriptionToken {
-        subscriptionLock.lock()
-        defer { subscriptionLock.unlock() }
-        actuallySubscribeIfNeeded()
+    public func subscribe() -> AsyncStream<Device.Event> {
+        if subscriptionContext == nil {
+            actuallySubscribe()
+        }
         let token = SubscriptionToken()
-        subscribers[ObjectIdentifier(token)] = Subscription(token: token, callback: callback)
-        return token
+        let (stream, continuation) = AsyncStream<Device.Event>.makeStream()
+        subscribers[ObjectIdentifier(token)] = { continuation.yield($0) }
+        continuation.onTermination = { _ in
+            Task { await self.unsubscribe(token: token) }
+        }
+        return stream
     }
 
-    public static func unsubscribe(token: SubscriptionToken) {
-        subscriptionLock.lock()
-        defer { subscriptionLock.unlock() }
-
+    private func unsubscribe(token: SubscriptionToken) {
         subscribers.removeValue(forKey: ObjectIdentifier(token))
-
-        if subscribers.isEmpty {
-            idevice_event_unsubscribe()
-            isSubscribed = false
+        if subscribers.isEmpty, let subscriptionContext {
+            idevice_events_unsubscribe(subscriptionContext)
+            self.subscriptionContext = nil
         }
     }
 

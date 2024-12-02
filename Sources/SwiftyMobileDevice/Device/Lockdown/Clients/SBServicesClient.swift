@@ -63,9 +63,9 @@ public final class SBServicesClient: LockdownService {
 
     public typealias Raw = sbservices_client_t
     public static let serviceIdentifier = SBSERVICES_SERVICE_NAME
-    public static let newFunc: NewFunc = sbservices_client_new
-    public static let startFunc: StartFunc = sbservices_client_start_service
-    public let raw: sbservices_client_t
+    public static nonisolated(unsafe) let newFunc: NewFunc = sbservices_client_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = sbservices_client_start_service
+    public nonisolated(unsafe) let raw: sbservices_client_t
     public required init(raw: sbservices_client_t) { self.raw = raw }
     deinit { sbservices_client_free(raw) }
 

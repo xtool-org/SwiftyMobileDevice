@@ -10,7 +10,7 @@ import Foundation
 import libimobiledevice
 import plist
 
-public class MISAgentClient: LockdownService {
+public final class MISAgentClient: LockdownService {
 
     public enum Error: CAPIError, LocalizedError {
         case unknown
@@ -43,9 +43,9 @@ public class MISAgentClient: LockdownService {
 
     public typealias Raw = misagent_client_t
     public static let serviceIdentifier = MISAGENT_SERVICE_NAME
-    public static let newFunc: NewFunc = misagent_client_new
-    public static let startFunc: StartFunc = misagent_client_start_service
-    public let raw: misagent_client_t
+    public static nonisolated(unsafe) let newFunc: NewFunc = misagent_client_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = misagent_client_start_service
+    public nonisolated(unsafe) let raw: misagent_client_t
     public required init(raw: misagent_client_t) { self.raw = raw }
     deinit { misagent_client_free(raw) }
 

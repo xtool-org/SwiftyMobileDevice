@@ -60,9 +60,9 @@ public final class HouseArrestClient: LockdownService {
 
     public typealias Raw = house_arrest_client_t
     public static let serviceIdentifier = HOUSE_ARREST_SERVICE_NAME
-    public static let newFunc: NewFunc = house_arrest_client_new
-    public static let startFunc: StartFunc = house_arrest_client_start_service
-    public let raw: house_arrest_client_t
+    public static nonisolated(unsafe) let newFunc: NewFunc = house_arrest_client_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = house_arrest_client_start_service
+    public nonisolated(unsafe) let raw: house_arrest_client_t
     public required init(raw: house_arrest_client_t) { self.raw = raw }
     deinit { house_arrest_client_free(raw) }
 
@@ -81,27 +81,6 @@ public final class HouseArrestClient: LockdownService {
         }
     }
 
-    private final class AFCChildClient: AFCClient {
-        // we need to keep the house_arrest_client_t alive because freeing
-        // it closes the AFC connection as well
-        private var parent: HouseArrestClient?
-
-        init(parent: HouseArrestClient) throws {
-            self.parent = parent
-
-            var raw: afc_client_t?
-            try CAPI<Error>.check(afc_client_new_from_house_arrest_client(parent.raw, &raw))
-
-            guard let raw = raw else { throw CAPIGenericError.unexpectedNil }
-
-            super.init(raw: raw)
-        }
-
-        required init(raw: afc_client_t) {
-            super.init(raw: raw)
-        }
-    }
-
     public func vend(_ vendable: Vendable, forApp appID: String) throws -> AFCClient {
         try CAPI<Error>.check(house_arrest_send_command(raw, vendable.command, appID))
         let result = try Self.decoder.decode(Result.self) {
@@ -110,7 +89,12 @@ public final class HouseArrestClient: LockdownService {
         guard result.status == .complete else {
             throw RequestFailure(reason: result.error)
         }
-        return try AFCChildClient(parent: self)
+
+        var afcRaw: afc_client_t?
+        try CAPI<AFCClient.Error>.check(afc_client_new_from_house_arrest_client(raw, &afcRaw))
+        guard let afcRaw else { throw CAPIGenericError.unexpectedNil }
+
+        return AFCClient(raw: afcRaw, associatedValue: self)
     }
 
 }

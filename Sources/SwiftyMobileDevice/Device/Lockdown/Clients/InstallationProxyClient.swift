@@ -15,7 +15,7 @@ private func requestCallbackC(command: plist_t?, status: plist_t?, userData: Uns
     InstallationProxyClient.requestCallback(rawCommand: command, rawStatus: status, rawUserData: userData)
 }
 
-public class InstallationProxyClient: LockdownService {
+public final class InstallationProxyClient: LockdownService {
 
     public enum Error: CAPIError, LocalizedError {
         case unknown
@@ -306,33 +306,54 @@ public class InstallationProxyClient: LockdownService {
         }
     }
 
-    private class RequestUserData {
-        enum Updater {
+    private final class RequestUserData: Sendable {
+        enum Updater: Sendable {
             // list is moved
-            case browse((_ currIndex: Int, _ total: Int, _ list: plist_t?) -> Void)
-            case progress((RequestProgress) -> Void)
+            case browse(@Sendable (_ currIndex: Int, _ total: Int, _ list: plist_t?) -> Void)
+            case progress(@Sendable (RequestProgress) -> Void)
         }
 
         let updater: Updater
-        let completion: (Result<(), Swift.Error>) -> Void
+        let completion: @Sendable (Result<(), Swift.Error>) -> Void
+        let stream: AsyncThrowingStream<Never, Swift.Error>?
         init(
             updater: Updater,
-            completion: @escaping (Result<(), Swift.Error>) -> Void
+            completion: @escaping @Sendable (Result<(), Swift.Error>) -> Void
         ) {
             self.updater = updater
             self.completion = completion
+            self.stream = nil
         }
 
-        func toOpaqueRetained() -> UnsafeMutableRawPointer {
-            Unmanaged.passRetained(self).toOpaque()
+        init(updater: Updater) {
+            let (stream, continuation) = AsyncThrowingStream<Never, Swift.Error>.makeStream()
+            self.updater = updater
+            self.completion = { result in
+                switch result {
+                case .success:
+                    continuation.finish()
+                case .failure(let error):
+                    continuation.finish(throwing: error)
+                }
+            }
+            self.stream = stream
+        }
+
+        func opaque() -> UnsafeMutableRawPointer {
+            Unmanaged.passUnretained(self).toOpaque()
+        }
+
+        func waitForCompletion() async throws {
+            guard let stream else { return }
+            for try await _ in stream {}
         }
     }
 
     public typealias Raw = instproxy_client_t
     public static let serviceIdentifier = INSTPROXY_SERVICE_NAME
-    public static let newFunc: NewFunc = instproxy_client_new
-    public static let startFunc: StartFunc = instproxy_client_start_service
-    public let raw: instproxy_client_t
+    public static nonisolated(unsafe) let newFunc: NewFunc = instproxy_client_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = instproxy_client_start_service
+    public nonisolated(unsafe) let raw: instproxy_client_t
     public required init(raw: instproxy_client_t) { self.raw = raw }
     deinit { instproxy_client_free(raw) }
 
@@ -345,7 +366,6 @@ public class InstallationProxyClient: LockdownService {
 
         func complete(_ result: Result<(), Swift.Error>) {
             userData.completion(result)
-            unmanagedUserData.release()
         }
 
         if let error = StatusError(raw: rawStatus!) {
@@ -388,72 +408,64 @@ public class InstallationProxyClient: LockdownService {
         package: URL,
         upgrade: Bool = false,
         options: Options = .init(),
-        progress: @escaping (RequestProgress) -> Void,
-        completion: @escaping (Result<(), Swift.Error>) -> Void
-    ) {
-        let rawUserData = Unmanaged
-            .passRetained(RequestUserData(updater: .progress(progress), completion: completion))
-            .toOpaque()
+        progress: @escaping @Sendable (RequestProgress) -> Void
+    ) async throws {
+        let userData = RequestUserData(updater: .progress(progress))
 
         let fn = upgrade ? instproxy_upgrade : instproxy_install
 
-        do {
-            // Note: build performance
-            let err = try encoder.withEncoded(options) { (rawOptions: plist_t) -> instproxy_error_t in
-                package.withUnsafeFileSystemRepresentation { (path: UnsafePointer<Int8>?) -> instproxy_error_t in
-                    fn(raw, path, rawOptions, requestCallbackC, rawUserData)
-                }
+        // Note: build performance
+        let err = try encoder.withEncoded(options) { (rawOptions: plist_t) -> instproxy_error_t in
+            package.withUnsafeFileSystemRepresentation { (path: UnsafePointer<Int8>?) -> instproxy_error_t in
+                fn(raw, path, rawOptions, requestCallbackC, userData.opaque())
             }
-            try CAPI<Error>.check(err)
-        } catch {
-            return completion(.failure(error))
         }
+        try CAPI<Error>.check(err)
+
+        try await userData.waitForCompletion()
     }
 
     public func uninstall(
         bundleID: String,
         options: Options = .init(),
-        progress: @escaping (RequestProgress) -> Void,
-        completion: @escaping (Result<(), Swift.Error>) -> Void
-    ) {
-        let rawUserData = Unmanaged
-            .passRetained(RequestUserData(updater: .progress(progress), completion: completion))
-            .toOpaque()
+        progress: @escaping @Sendable (RequestProgress) -> Void
+    ) async throws {
+        let userData = RequestUserData(updater: .progress(progress))
 
-        do {
-            let err = try encoder.withEncoded(options) { (rawOptions: plist_t) -> instproxy_error_t in
-                instproxy_uninstall(raw, bundleID, rawOptions, requestCallbackC, rawUserData)
-            }
-            try CAPI<Error>.check(err)
-        } catch {
-            return completion(.failure(error))
+        let err = try encoder.withEncoded(options) { (rawOptions: plist_t) -> instproxy_error_t in
+            instproxy_uninstall(raw, bundleID, rawOptions, requestCallbackC, userData.opaque())
         }
+        try CAPI<Error>.check(err)
+
+        try await userData.waitForCompletion()
     }
 
     public func archive(
         app: String,
         options: Options = .init(),
-        progress: @escaping (RequestProgress) -> Void,
-        completion: @escaping (Result<(), Swift.Error>) -> Void
-    ) throws {
-        let rawUserData = RequestUserData(updater: .progress(progress), completion: completion)
-            .toOpaqueRetained()
+        progress: @escaping @Sendable (RequestProgress) -> Void
+    ) async throws {
+        let userData = RequestUserData(updater: .progress(progress))
+
         try encoder.withEncoded(options) {
-            try CAPI<Error>.check(instproxy_archive(raw, app, $0, requestCallbackC, rawUserData))
+            try CAPI<Error>.check(instproxy_archive(raw, app, $0, requestCallbackC, userData.opaque()))
         }
+
+        try await userData.waitForCompletion()
     }
 
     public func restore(
         app: String,
         options: Options = .init(),
-        progress: @escaping (RequestProgress) -> Void,
-        completion: @escaping (Result<(), Swift.Error>) -> Void
-    ) throws {
-        let rawUserData = RequestUserData(updater: .progress(progress), completion: completion)
-            .toOpaqueRetained()
+        progress: @escaping @Sendable (RequestProgress) -> Void
+    ) async throws {
+        let userData = RequestUserData(updater: .progress(progress))
+
         try encoder.withEncoded(options) {
-            try CAPI<Error>.check(instproxy_restore(raw, app, $0, requestCallbackC, rawUserData))
+            try CAPI<Error>.check(instproxy_restore(raw, app, $0, requestCallbackC, userData.opaque()))
         }
+
+        try await userData.waitForCompletion()
     }
 
     public func lookupArchives<T: Decodable>(resultType: T.Type) throws -> [String: T] {
@@ -464,12 +476,11 @@ public class InstallationProxyClient: LockdownService {
 
     public func removeArchive(
         app: String,
-        progress: @escaping (RequestProgress) -> Void,
-        completion: @escaping (Result<(), Swift.Error>) -> Void
-    ) throws {
-        let rawUserData = RequestUserData(updater: .progress(progress), completion: completion)
-            .toOpaqueRetained()
-        try CAPI<Error>.check(instproxy_remove_archive(raw, app, nil, requestCallbackC, rawUserData))
+        progress: @escaping @Sendable (RequestProgress) -> Void
+    ) async throws {
+        let userData = RequestUserData(updater: .progress(progress))
+        try CAPI<Error>.check(instproxy_remove_archive(raw, app, nil, requestCallbackC, userData.opaque()))
+        try await userData.waitForCompletion()
     }
 
     public func lookup<T: Decodable>(
@@ -492,20 +503,19 @@ public class InstallationProxyClient: LockdownService {
     public func browse<T: Decodable>(
         resultType: T.Type,
         options: Options = .init(),
-        progress: @escaping (_ currIndex: Int, _ total: Int, _ apps: Result<[T], Swift.Error>) -> Void,
-        completion: @escaping (Result<(), Swift.Error>) -> Void
-    ) throws {
+        progress: @escaping @Sendable (_ currIndex: Int, _ total: Int, _ apps: Result<[T], Swift.Error>) -> Void
+    ) async throws {
         let updater = RequestUserData.Updater.browse { currIdx, total, rawApps in
             let apps = rawApps.map { unwrapped in
                 Result { try self.decoder.decode([T].self, moving: unwrapped) }
             } ?? .success([])
             progress(currIdx, total, apps)
         }
-        let rawUserData = RequestUserData(updater: updater, completion: completion)
-            .toOpaqueRetained()
+        let userData = RequestUserData(updater: updater)
         try encoder.withEncoded(options) { rawOpts in
-            instproxy_browse_with_callback(raw, rawOpts, requestCallbackC, rawUserData)
+            instproxy_browse_with_callback(raw, rawOpts, requestCallbackC, userData.opaque())
         }
+        try await userData.waitForCompletion()
     }
 
     public func executable(forBundleID bundleID: String) throws -> URL {

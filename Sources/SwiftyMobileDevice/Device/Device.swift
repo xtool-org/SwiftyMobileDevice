@@ -46,7 +46,7 @@ extension LookupMode {
     }
 }
 
-public class Device {
+public final class Device: Sendable {
 
     public enum Error: CAPIError {
         case unknown
@@ -80,7 +80,7 @@ public class Device {
         idevice_set_debug_level(.init(level.rawValue))
     }
 
-    public let raw: idevice_t
+    public nonisolated(unsafe) let raw: idevice_t
     public init(udid: String, lookupMode: LookupMode = .only(.usb)) throws {
         var device: idevice_t?
         try CAPI<Error>.check(idevice_new_with_options(&device, udid, lookupMode.ideviceRaw))

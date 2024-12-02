@@ -11,12 +11,12 @@ import libimobiledevice
 
 extension Device {
 
-    public class Connection: StreamingConnection {
+    public final class Connection: StreamingConnection {
 
         public typealias Error = Device.Error
         public typealias Raw = idevice_connection_t
 
-        public let raw: idevice_connection_t
+        public nonisolated(unsafe) let raw: idevice_connection_t
         public init(raw: idevice_connection_t) { self.raw = raw }
         public init(device: Device, port: UInt16) throws {
             var connection: idevice_connection_t?
@@ -34,9 +34,9 @@ extension Device {
             return FileHandle(fileDescriptor: handle)
         }
 
-        public let sendFunc: SendFunc = idevice_connection_send
-        public let receiveFunc: ReceiveFunc = idevice_connection_receive
-        public let receiveTimeoutFunc: ReceiveTimeoutFunc = idevice_connection_receive_timeout
+        public nonisolated(unsafe) let sendFunc: SendFunc = idevice_connection_send
+        public nonisolated(unsafe) let receiveFunc: ReceiveFunc = idevice_connection_receive
+        public nonisolated(unsafe) let receiveTimeoutFunc: ReceiveTimeoutFunc = idevice_connection_receive_timeout
 
         public func setSSLEnabled(_ enabled: Bool) throws {
             try CAPI<Error>.check(

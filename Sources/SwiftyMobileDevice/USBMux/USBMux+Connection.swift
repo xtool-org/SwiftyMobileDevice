@@ -11,7 +11,7 @@ import usbmuxd
 
 extension USBMux {
 
-    public class Connection: StreamingConnection {
+    public final class Connection: StreamingConnection {
 
         public typealias Error = USBMux.Error
         public typealias Raw = Int32
@@ -27,9 +27,9 @@ extension USBMux {
         }
         deinit { usbmuxd_disconnect(raw) }
 
-        public let sendFunc: SendFunc = usbmuxd_send
-        public let receiveFunc: ReceiveFunc = usbmuxd_recv
-        public let receiveTimeoutFunc: ReceiveTimeoutFunc = usbmuxd_recv_timeout
+        public nonisolated(unsafe) let sendFunc: SendFunc = usbmuxd_send
+        public nonisolated(unsafe) let receiveFunc: ReceiveFunc = usbmuxd_recv
+        public nonisolated(unsafe) let receiveTimeoutFunc: ReceiveTimeoutFunc = usbmuxd_recv_timeout
 
     }
 

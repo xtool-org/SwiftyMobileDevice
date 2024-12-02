@@ -9,7 +9,7 @@
 import Foundation
 
 /// Represents a connection using a streaming protocol such as TCP
-public protocol StreamingConnection {
+public protocol StreamingConnection: Sendable {
     associatedtype Error: CAPIError
 
     associatedtype Raw

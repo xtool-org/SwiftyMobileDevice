@@ -9,7 +9,7 @@
 import Foundation
 import libimobiledevice
 
-public class HeartbeatClient: LockdownService {
+public final class HeartbeatClient: LockdownService {
 
     public enum Error: CAPIError, LocalizedError {
         case unknown
@@ -41,9 +41,9 @@ public class HeartbeatClient: LockdownService {
 
     public typealias Raw = heartbeat_client_t
     public static let serviceIdentifier = HEARTBEAT_SERVICE_NAME
-    public static let newFunc: NewFunc = heartbeat_client_new
-    public static let startFunc: StartFunc = heartbeat_client_start_service
-    public let raw: heartbeat_client_t
+    public static nonisolated(unsafe) let newFunc: NewFunc = heartbeat_client_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = heartbeat_client_start_service
+    public nonisolated(unsafe) let raw: heartbeat_client_t
     public required init(raw: heartbeat_client_t) { self.raw = raw }
     deinit { heartbeat_client_free(raw) }
 

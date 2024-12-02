@@ -10,7 +10,7 @@ import Foundation
 import libimobiledevice
 import plist
 
-public class MobileImageMounterClient: LockdownService {
+public final class MobileImageMounterClient: LockdownService {
 
     public enum Error: CAPIError, LocalizedError {
         case unknown
@@ -46,9 +46,9 @@ public class MobileImageMounterClient: LockdownService {
 
     public typealias Raw = mobile_image_mounter_client_t
     public static let serviceIdentifier = MOBILE_IMAGE_MOUNTER_SERVICE_NAME
-    public static let newFunc: NewFunc = mobile_image_mounter_new
-    public static let startFunc: StartFunc = mobile_image_mounter_start_service
-    public let raw: mobile_image_mounter_client_t
+    public static nonisolated(unsafe) let newFunc: NewFunc = mobile_image_mounter_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = mobile_image_mounter_start_service
+    public nonisolated(unsafe) let raw: mobile_image_mounter_client_t
     public required init(raw: mobile_image_mounter_client_t) { self.raw = raw }
     deinit {
         mobile_image_mounter_hangup(raw)

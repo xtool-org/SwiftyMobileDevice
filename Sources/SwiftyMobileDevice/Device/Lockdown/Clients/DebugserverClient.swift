@@ -9,7 +9,7 @@
 import Foundation
 import libimobiledevice
 
-public class DebugserverClient: LockdownService {
+public final class DebugserverClient: LockdownService {
 
     public enum Error: CAPIError, LocalizedError {
         case unknown
@@ -46,9 +46,9 @@ public class DebugserverClient: LockdownService {
 
     public typealias Raw = debugserver_client_t
     public static let serviceIdentifier = DEBUGSERVER_SERVICE_NAME // not used
-    public static let newFunc: NewFunc = debugserver_client_new
-    public static let startFunc: StartFunc = debugserver_client_start_service
-    public let raw: debugserver_client_t
+    public static nonisolated(unsafe) let newFunc: NewFunc = debugserver_client_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = debugserver_client_start_service
+    public nonisolated(unsafe) let raw: debugserver_client_t
     public required init(raw: debugserver_client_t) { self.raw = raw }
     public static func startService(
         withFunc fn: (String) throws -> lockdownd_service_descriptor_t

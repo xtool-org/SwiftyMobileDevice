@@ -1,9 +1,9 @@
-public enum ConnectionType {
+public enum ConnectionType: Sendable {
     case usb
     case network
 }
 
-public enum LookupMode: Hashable {
+public enum LookupMode: Hashable, Sendable {
     case only(ConnectionType)
     case both(preferring: ConnectionType)
 }

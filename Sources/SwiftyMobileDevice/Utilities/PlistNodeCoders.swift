@@ -10,7 +10,7 @@ import Foundation
 import Superutils
 import plist
 
-class PlistNodeEncoder {
+final class PlistNodeEncoder: Sendable {
     enum Error: Swift.Error {
         case failedToEncode
     }
@@ -55,7 +55,7 @@ class PlistNodeEncoder {
 
 }
 
-class PlistNodeDecoder {
+final class PlistNodeDecoder: Sendable {
     enum Error: Swift.Error {
         case failedToDecode
         case acceptorFailed

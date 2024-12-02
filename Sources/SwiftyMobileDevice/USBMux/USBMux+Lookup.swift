@@ -11,7 +11,7 @@ import usbmuxd
 
 extension USBMux {
 
-    public enum LookupMode {
+    public enum LookupMode: Sendable {
         case only(ConnectionType)
         case both(preferring: ConnectionType)
 
@@ -34,8 +34,8 @@ extension USBMux {
         }
     }
 
-    public struct Event {
-        public enum Kind {
+    public struct Event: Sendable {
+        public enum Kind: Sendable {
             case added
             case removed
             case paired

@@ -46,8 +46,8 @@ public enum USBMux {
         }
     }
 
-    public struct Device {
-        public struct Handle {
+    public struct Device: Sendable {
+        public struct Handle: Sendable {
             public let raw: UInt32
             public init(raw: UInt32) {
                 self.raw = raw

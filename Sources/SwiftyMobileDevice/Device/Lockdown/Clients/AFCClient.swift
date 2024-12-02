@@ -9,7 +9,7 @@
 import Foundation
 import libimobiledevice
 
-public class AFCClient: LockdownService {
+public final class AFCClient: LockdownService {
 
     public enum Error: CAPIError, LocalizedError {
         case unknown
@@ -122,7 +122,7 @@ public class AFCClient: LockdownService {
         }
     }
 
-    public class File {
+    public final class File: Sendable {
         public enum Mode {
             /// `r` (`O_RDONLY`)
             case readOnly
@@ -224,11 +224,20 @@ public class AFCClient: LockdownService {
 
     public typealias Raw = afc_client_t
     public static let serviceIdentifier = AFC_SERVICE_NAME
-    public static let newFunc: NewFunc = afc_client_new
-    public static let startFunc: StartFunc = afc_client_start_service
-    public let raw: afc_client_t
-    public required init(raw: afc_client_t) { self.raw = raw }
+    public static nonisolated(unsafe) let newFunc: NewFunc = afc_client_new
+    public static nonisolated(unsafe) let startFunc: StartFunc = afc_client_start_service
+    public nonisolated(unsafe) let raw: afc_client_t
+    public required init(raw: afc_client_t) {
+        self.raw = raw
+        self.associatedValue = nil
+    }
     deinit { afc_client_free(raw) }
+
+    private let associatedValue: Sendable?
+    init(raw: afc_client_t, associatedValue: Sendable?) {
+        self.raw = raw
+        self.associatedValue = associatedValue
+    }
 
     public func deviceInfo() throws -> [String: String] {
         try CAPI<Error>.getDictionary(
