@@ -315,15 +315,7 @@ public final class InstallationProxyClient: LockdownService {
 
         let updater: Updater
         let completion: @Sendable (Result<(), Swift.Error>) -> Void
-        let stream: AsyncThrowingStream<Never, Swift.Error>?
-        init(
-            updater: Updater,
-            completion: @escaping @Sendable (Result<(), Swift.Error>) -> Void
-        ) {
-            self.updater = updater
-            self.completion = completion
-            self.stream = nil
-        }
+        private let stream: AsyncThrowingStream<Never, Swift.Error>
 
         init(updater: Updater) {
             let (stream, continuation) = AsyncThrowingStream<Never, Swift.Error>.makeStream()
@@ -344,7 +336,6 @@ public final class InstallationProxyClient: LockdownService {
         }
 
         func waitForCompletion() async throws {
-            guard let stream else { return }
             for try await _ in stream {}
         }
     }
@@ -361,8 +352,7 @@ public final class InstallationProxyClient: LockdownService {
     private let decoder = PlistNodeDecoder()
 
     fileprivate static func requestCallback(rawCommand: plist_t?, rawStatus: plist_t?, rawUserData: UnsafeMutableRawPointer?) {
-        let unmanagedUserData = Unmanaged<RequestUserData>.fromOpaque(rawUserData!)
-        let userData = unmanagedUserData.takeUnretainedValue()
+        let userData = Unmanaged<RequestUserData>.fromOpaque(rawUserData!).takeUnretainedValue()
 
         func complete(_ result: Result<(), Swift.Error>) {
             userData.completion(result)
