@@ -70,41 +70,35 @@ extension USBMux {
         }
     }
 
-    public class SubscriptionToken {
-        fileprivate var userData: SubscriptionUserData
-        fileprivate let context: usbmuxd_subscription_context_t
-        fileprivate init(userData: SubscriptionUserData, context: usbmuxd_subscription_context_t) {
-            self.userData = userData
-            self.context = context
+    public static func subscribe() throws -> AsyncStream<Event> {
+        final class SubscriptionUserData: Sendable {
+            let callback: @Sendable (Event) -> Void
+            init(callback: @escaping @Sendable (Event) -> Void) {
+                self.callback = callback
+            }
         }
-    }
 
-    fileprivate class SubscriptionUserData {
-        let callback: (Event) -> Void
-        init(callback: @escaping (Event) -> Void) {
-            self.callback = callback
+        let (stream, continuation) = AsyncStream<Event>.makeStream()
+
+        let userData = SubscriptionUserData { continuation.yield($0) }
+
+        nonisolated(unsafe) var context: usbmuxd_subscription_context_t?
+        try CAPI<Error>.check(usbmuxd_events_subscribe(
+            &context, 
+            { rawEvent, opaqueUserData in
+                let userData = Unmanaged<SubscriptionUserData>.fromOpaque(opaqueUserData!).takeUnretainedValue()
+                guard let event = Event(raw: rawEvent!.pointee) else { return }
+                userData.callback(event)
+            },
+            Unmanaged.passUnretained(userData).toOpaque()
+        ))
+
+        continuation.onTermination = { _ in
+            try? CAPI<Error>.check(usbmuxd_events_unsubscribe(context!))
+            _ = userData // retain until unsubscribe
         }
-    }
 
-    // TODO: Do something similar to Device.swift here, with a single global handler instead
-    public static func subscribe(withCallback callback: @escaping (Event) -> Void) throws -> SubscriptionToken {
-        let userData = SubscriptionUserData(callback: callback)
-        let opaqueUserData = Unmanaged.passRetained(userData).toOpaque()
-
-        var context: usbmuxd_subscription_context_t?
-        try CAPI<Error>.check(usbmuxd_events_subscribe(&context, { rawEvent, opaqueUserData in
-            let userData = Unmanaged<SubscriptionUserData>.fromOpaque(opaqueUserData!).takeUnretainedValue()
-            guard let event = Event(raw: rawEvent!.pointee) else { return }
-            userData.callback(event)
-        }, opaqueUserData))
-
-        return SubscriptionToken(userData: userData, context: context!)
-    }
-
-    public static func unsubscribe(withToken token: SubscriptionToken) throws {
-        try CAPI<Error>.check(usbmuxd_events_unsubscribe(token.context))
-        // balance the initial retain in `subscribe`
-        Unmanaged.passUnretained(token.userData).release()
+        return stream
     }
 
     public static func allDevices() throws -> [Device] {
