@@ -26,17 +26,17 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/SuperchargeApp/SuperchargeCore", .upToNextMinor(from: "1.2.0")),
+        .package(url: "https://github.com/xtool-org/xtool-core", .upToNextMinor(from: "1.3.0")),
     ],
     targets: [
         .target(
             name: "SwiftyMobileDevice",
             dependencies: [
-                .product(name: "plist", package: "SuperchargeCore"),
-                .product(name: "libimobiledeviceGlue", package: "SuperchargeCore"),
-                .product(name: "usbmuxd", package: "SuperchargeCore"),
-                .product(name: "libimobiledevice", package: "SuperchargeCore"),
-                .product(name: "Superutils", package: "SuperchargeCore")
+                .product(name: "plist", package: "xtool-core"),
+                .product(name: "libimobiledeviceGlue", package: "xtool-core"),
+                .product(name: "usbmuxd", package: "xtool-core"),
+                .product(name: "libimobiledevice", package: "xtool-core"),
+                .product(name: "Superutils", package: "xtool-core")
             ]
         ),
     ]
