@@ -50,10 +50,9 @@ public final class PropertyListClient {
         serviceIdentifier: String,
         sendEscrowBag: Bool = false,
     ) throws {
-        let descriptor = try LockdownClient.ServiceDescriptor(
-            client: lockdownClient,
-            serviceIdentifier: serviceIdentifier,
-            sendEscrowBag: sendEscrowBag,
+        let descriptor = try lockdownClient.startService(
+            identifier: serviceIdentifier,
+            sendEscrowBag: sendEscrowBag
         )
         var client: property_list_service_client_t?
         let status = property_list_service_client_new(device.raw, descriptor.raw, &client)

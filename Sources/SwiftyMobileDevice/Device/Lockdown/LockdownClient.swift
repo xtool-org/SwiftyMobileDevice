@@ -348,6 +348,13 @@ public final class LockdownClient: Sendable {
         try ServiceDescriptor(client: self, type: T.self, sendEscrowBag: sendEscrowBag)
     }
 
+    public func startService(
+        identifier: String,
+        sendEscrowBag: Bool = false
+    ) throws -> ServiceDescriptor {
+        try ServiceDescriptor(client: self, serviceIdentifier: identifier, sendEscrowBag: sendEscrowBag)
+    }
+
     public func startSession(
         withHostID hostID: String
     ) throws -> (sessionID: SessionID, isSSLEnabled: Bool) {
