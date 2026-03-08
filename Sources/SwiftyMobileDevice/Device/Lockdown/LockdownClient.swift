@@ -161,17 +161,41 @@ public final class LockdownClient: Sendable {
             self.identifier = String(cString: raw.pointee.identifier)
         }
 
+        private static func startService(
+            client: LockdownClient,
+            serviceIdentifier: String,
+            sendEscrowBag: Bool,
+        ) throws -> lockdownd_service_descriptor_t {
+            var descriptor: lockdownd_service_descriptor_t?
+            try CAPI<Error>.check(
+                (sendEscrowBag ? lockdownd_start_service_with_escrow_bag : lockdownd_start_service)(
+                    client.raw, serviceIdentifier, &descriptor
+                )
+            )
+            return try descriptor.orThrow(Error.internal)
+        }
+
+        public convenience init(
+            client: LockdownClient,
+            serviceIdentifier: String,
+            sendEscrowBag: Bool = false
+        ) throws {
+            try self.init(raw: Self.startService(
+                client: client,
+                serviceIdentifier: serviceIdentifier,
+                sendEscrowBag: sendEscrowBag
+            ))
+        }
+
         public convenience init<T: LockdownService>(
             client: LockdownClient, type: T.Type = T.self, sendEscrowBag: Bool = false
         ) throws {
             let raw = try T.startService { id in
-                var descriptor: lockdownd_service_descriptor_t?
-                try CAPI<Error>.check(
-                    (sendEscrowBag ? lockdownd_start_service_with_escrow_bag : lockdownd_start_service)(
-                        client.raw, id, &descriptor
-                    )
+                try Self.startService(
+                    client: client,
+                    serviceIdentifier: id,
+                    sendEscrowBag: sendEscrowBag
                 )
-                return try descriptor.orThrow(Error.internal)
             }
             self.init(raw: raw)
         }
